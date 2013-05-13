@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <syslog.h>
 
@@ -19,12 +20,16 @@ mav_param_t mav_params[] = {
   {MAV_PARAM_TYPE_UINT8, "dummy2", &dummy2},
   MAV_PARAM_LIST_END //Sentinel
 };
-
+size_t nparams = sizeof(mav_params)/sizeof(mav_param_t) - 1;
 
 int setup() {
   //Configure logging
   openlog("pdva-pilog", LOG_CONS | LOG_PERROR | LOG_PID, LOG_USER);
-
+  
+  //Load parameters
+  if (mav_param_load(mav_params))
+    syslog(LOG_WARNING, "Could not load MAV parameters, using default values.");
+  
   return 0;
 }
 

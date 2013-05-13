@@ -4,7 +4,7 @@ project (pdva-pilot)
 set (pdva-pilot_VERSION_MAJOR 0)
 set (pdva-pilot_VERSION_MINOR 1)
 
-find_library (LIBCONFUSE_LIBRARIES NAMES confuse libconfuse)
+find_library (LIBCONFIG_LIBRARIES NAMES config libconfig)
 
 set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99")
 #include_directories (./mavlink)
@@ -12,6 +12,6 @@ set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99")
 add_library (param param.c)
 
 add_executable (pdva-pilot pdva-pilot.c)
-target_link_libraries (pdva-pilot param rt ${LIBCONFUSE_LIBRARIES})
+target_link_libraries (pdva-pilot param rt ${LIBCONFIG_LIBRARIES})
 
 install (TARGETS pdva-pilot DESTINATION bin)

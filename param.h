@@ -20,15 +20,15 @@
 typedef struct {
   enum MAV_PARAM_TYPE type;
   const char id[16];
-  void *dest;
+  void *destination;
 } mav_param_t;
 
 
 /// Marks the end of a mav_param_t list.
-#define MAV_PARAM_LIST_END {MAV_PARAM_TYPE_ENUM_END, NULL, NULL}
+#define MAV_PARAM_LIST_END {MAV_PARAM_TYPE_ENUM_END, "", NULL}
 
 /// True if a mav_param_t is the end of a list
-#define IS_MAV_PARAM_LIST_END(param) (param.id == NULL)
+#define IS_MAV_PARAM_LIST_END(param) (param.type == MAV_PARAM_TYPE_ENUM_END)
 
 
 /// Load the parameters from file.

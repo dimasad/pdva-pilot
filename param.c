@@ -1,60 +1,79 @@
 #include <stdlib.h>
 #include <syslog.h>
-#include "confuse.h"
+#include <libconfig.h>
 
 #include "param.h"
 
+/**
+ * Load runtime parameters from `MAV_PARAM_FILE'.
+ * @return 0 if success.
+ */
 int mav_param_load(mav_param_t params[]) {
-  //Retrieve the size of the parameter list
-  size_t nparams = 0;
-  for (nparams = 0; IS_MAV_PARAM_LIST_END(params[nparams]); nparams++);
-  
-  //Allocate the configuration option description vectors
-  cfg_opt_t *opts = malloc((nparams + 1) * sizeof(cfg_opt_t));
-  if (opts == NULL) {
-    syslog(LOG_ERR, "Error in malloc %s(%d): %m.", __FILE__, __LINE__);
-    return -1;
-  }
+  //Create configuration file object
+  config_t config;
+  config_init(&config);
 
-  //Fill in the option types
-  opts[nparams] = CFG_END();
-  for (int i = 0; i < nparams; i++) {
+  //Read configuration file
+  if (!config_read_file(&config, MAV_PARAM_FILE)) {
+    syslog(LOG_ERR, "Error reading MAV_PARAM_FILE `%s' %s (%s)l%d.",
+	   MAV_PARAM_FILE, config_error_text(&config),
+	   __FILE__, __LINE__);
+    goto mav_param_load_error;
+  }
+  
+  //Load values into parameters
+  for (int i = 0; IS_MAV_PARAM_LIST_END(params[i]); i++) {
+    long lvalue;
+    double dvalue;
+    
     switch (params[i].type) {
     MAV_PARAM_TYPE_UINT8:
+      if (config_lookup_int(&config, params[i].id, &lvalue))
+	*(uint8_t*)params[i].destination = lvalue;
+      break;
     MAV_PARAM_TYPE_UINT16:
+      if (config_lookup_int(&config, params[i].id, &lvalue))
+	*(uint16_t*)params[i].destination = lvalue;
+      break;
     MAV_PARAM_TYPE_UINT32:
+      if (config_lookup_int(&config, params[i].id, &lvalue))
+	*(uint32_t*)params[i].destination = lvalue;
+      break;
     MAV_PARAM_TYPE_UINT64:
+      if (config_lookup_int(&config, params[i].id, &lvalue))
+	*(uint64_t*)params[i].destination = lvalue;
+      break;
     MAV_PARAM_TYPE_INT8:
+      if (config_lookup_int(&config, params[i].id, &lvalue))
+	*(int8_t*)params[i].destination = lvalue;
+      break;
     MAV_PARAM_TYPE_INT16:
+      if (config_lookup_int(&config, params[i].id, &lvalue))
+	*(int16_t*)params[i].destination = lvalue;
+      break;
     MAV_PARAM_TYPE_INT32:
+      if (config_lookup_int(&config, params[i].id, &lvalue))
+	*(int32_t*)params[i].destination = lvalue;
+      break;
     MAV_PARAM_TYPE_INT64:
-      opts[i] = CFG_INT(params[i].id, *params[i].dest, CFGF_NONE);
-      break;  
+      if (config_lookup_int(&config, params[i].id, &lvalue))
+	*(int64_t*)params[i].destination = lvalue;
+      break;
     MAV_PARAM_TYPE_REAL32:
+      if (config_lookup_float(&config, params[i].id, &dvalue))
+	*(float*)params[i].destination = dvalue;
+      break;
     MAV_PARAM_TYPE_REAL64:
-      opts[i] = CFG_FLOAT(params[i].id, *params[i].dest, CFGF_NONE);
+      if (config_lookup_float(&config, params[i].id, &dvalue))
+	*(double*)params[i].destination = dvalue;
       break;
     }
   }
   
-  cfg_t *cfg = cfg_init(opts, CFGF_NONE);
-  free(opts);
-  
-  switch(cfg_parse(cfg, MAV_PARAM_FILE)) {
-  case CFG_FILE_ERROR:
-    syslog(LOG_ERR, "Could not open MAV_PARAM_FILE `%s' %m (%s)%d.", 
-	   MAV_PARAM_FILE, __FILE__, __LINE__);
-    goto mav_param_load_error;
-  case CFG_PARSE_ERROR:
-    syslog(LOG_ERR, "Error parsing MAV_PARAM_FILE `%s' %s (%s)%d.", 
-	   MAV_PARAM_FILE, cfg_error(), __FILE__, __LINE__);
-    goto mav_param_load_error;
-  }
-  
-  cfg_free(cfg);
+  config_destroy(&config);
   return 0;
   
  mav_param_load_error:
-  cfg_free(cfg);
+  config_destroy(&config);
   return -1;
 }
