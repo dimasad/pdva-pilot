@@ -6,32 +6,68 @@
  */
 
 
+/* *** Includes *** */
+
 #include <stdint.h>
-#include "mavlink/v1.0/common/mavlink.h"
+
+#include <mavlink/v1.0/common/mavlink.h>
+
+#include "pdva-pilot.h"
+
+/* *** Macros *** */
+
+/// Marks the end of a list of param_def_t elements.
+#define PARAM_DEF_LIST_END {MAV_PARAM_TYPE_ENUM_END, "", NULL, NULL}
+
+/// True if a param_def_t is the PARAM_DEF_LIST_END sentinel.
+#define IS_PARAM_DEF_LIST_END(pdef) (pdef.type == MAV_PARAM_TYPE_ENUM_END)
 
 
-#ifndef MAV_PARAM_FILE
-#define MAV_PARAM_FILE "/etc/pdva/mav_params.cfg"
-///< The location of the runtime parameter configuration file.
-#endif // not MAV_PARAM_FILE
+/* *** Types *** */
+
+/// Union of acceptable mavlink parameter types.
+typedef union {
+  float param_float;
+  int32_t param_int32;
+  uint32_t param_uint32;
+  int16_t param_int16;
+  uint16_t param_uint16;
+  int8_t param_int8;
+  uint8_t param_uint8;
+} param_value_union_t;
 
 
-/// Represents the definition of a runtime parameter.
+/// Parameter update callback, should return 0 if successfully updated.
+typedef ret_status_t (*param_updater_t)(enum MAV_PARAM_TYPE type,
+					   const char* id, void* location,
+					   param_value_union_t new_value);
+
+/// Definition of a runtime parameter.
 typedef struct {
   enum MAV_PARAM_TYPE type;
-  const char id[16];
-  void *destination;
-} mav_param_t;
+  char id[16];
+  void *location;
+  param_updater_t updater;
+} param_def_t;
 
 
-/// Marks the end of a mav_param_t list.
-#define MAV_PARAM_LIST_END {MAV_PARAM_TYPE_ENUM_END, "", NULL}
+/* *** Functions *** */
 
-/// True if a mav_param_t is the end of a list
-#define IS_MAV_PARAM_LIST_END(param) (param.type == MAV_PARAM_TYPE_ENUM_END)
+/// Default parameter updater callback.
+ret_status_t
+default_param_updater(enum MAV_PARAM_TYPE type, const char* id,
+		      void* location, param_value_union_t new_value);
 
+/// Load runtime parameters from given file.
+ret_status_t
+param_load(param_def_t params[], const char* file);
 
-/// Load the parameters from file.
-int mav_param_load(mav_param_t params[]);
+/// Save runtime parameters into given file.
+ret_status_t
+param_save(param_def_t params[], const char* file);
+
+/// Updates the parameter to a new value.
+ret_status_t
+update_param(param_def_t *param_def, param_value_union_t new_value);
 
 #endif // not PDVA__PARAM_H
