@@ -10,9 +10,9 @@
 
 #include <stdint.h>
 
-#include <mavlink/v1.0/common/mavlink.h>
-
+#include "mavlink_bridge.h"
 #include "pdva-pilot.h"
+
 
 /* *** Macros *** */
 
@@ -24,6 +24,11 @@
 
 
 /* *** Types *** */
+
+/// Global configuration structure of each the pdva-pilot instance.
+typedef struct {
+  uint8_t sysid;
+} pdva_pilot_config_t;
 
 /// Union of acceptable mavlink parameter types.
 typedef union {
@@ -66,8 +71,16 @@ param_load(param_def_t params[], const char* file);
 ret_status_t
 param_save(param_def_t params[], const char* file);
 
-/// Updates the parameter to a new value.
+/// Free the resources associted with the pdva_pilot_config_t object.
+void 
+pdva_config_destroy(pdva_pilot_config_t *);
+
+/// Initialize pdva_pilot_config_t structure.
+void 
+pdva_config_init(pdva_pilot_config_t *pdva_config);
+
+/// Load pdva-pilot configuration from file.
 ret_status_t
-update_param(param_def_t *param_def, param_value_union_t new_value);
+pdva_config_load(pdva_pilot_config_t *pdva_config, const char *file);
 
 #endif // not PDVA__PARAM_H

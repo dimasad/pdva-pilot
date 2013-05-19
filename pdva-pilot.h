@@ -5,15 +5,6 @@
  * General definitions and global structures of the pdva-pilot.
  */
 
-
-/* *** Macros *** */
-
-#ifndef PDVA_CONFIG_DIR
-#define PDVA_CONFIG_DIR "/etc/pdva"
-///< Path of the pdva-pilot configuration directory.
-#endif // not PDVA_CONFIG_DIR
-
-
 /* *** Types *** */
 
 /// Return status of pdva-pilot functions: 0 if success nonzero otherwise.

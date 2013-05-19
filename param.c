@@ -1,9 +1,26 @@
+
+/** @file
+ * Implementation of the parameter configuration infrastructure.
+ */
+
+/* *** Includes *** */
+
 #include <stdlib.h>
+#include <string.h>
 #include <syslog.h>
 
 #include <libconfig.h>
 
 #include "param.h"
+
+
+/* *** Function prototypes *** */
+
+static ret_status_t
+update_param(param_def_t* param_def, param_value_union_t new_value);
+
+
+/* *** Public functions *** */
 
 ret_status_t
 default_param_updater(enum MAV_PARAM_TYPE type, const char* id, 
@@ -39,16 +56,6 @@ default_param_updater(enum MAV_PARAM_TYPE type, const char* id,
   
   return STATUS_SUCCESS;
 }
-
-ret_status_t
-update_param(param_def_t* param_def, param_value_union_t new_value) {
-  param_updater_t callback = (param_def->updater ? 
-			      param_def->updater : &default_param_updater);
-  
-  return callback(param_def->type, param_def->id, 
-		  param_def->location, new_value);
-}
-
 
 ret_status_t
 param_load(param_def_t params[], const char* file) {
@@ -225,4 +232,54 @@ param_save(param_def_t params[], const char* file) {
  param_save_error:
   config_destroy(&config);
   return STATUS_FAILURE;
+}
+
+void 
+pdva_config_destroy(pdva_pilot_config_t *pdva_config) {
+}
+
+/// Initialize pdva_pilot_config_t structure.
+void 
+pdva_config_init(pdva_pilot_config_t *pdva_config) {
+  pdva_config->sysid = 0;
+}
+
+/// Load pdva-pilot configuration from file.
+ret_status_t
+pdva_config_load(pdva_pilot_config_t *pdva_config, const char *file) {
+  //Create configuration file object
+  config_t config;
+  config_init(&config);
+
+  //Read configuration file
+  if (!config_read_file(&config, file)) {
+    syslog(LOG_ERR, "Error reading pdva-pilot configuration file `%s': %s "
+	   "at line %d (%s)%d.", file, config_error_text(&config), 
+	   config_error_line(&config), __FILE__, __LINE__);
+    goto config_load_error;
+  }
+  
+  long sysid;
+  if (config_lookup_int(&config, "sysid", &sysid))
+    pdva_config->sysid = sysid;
+
+  config_destroy(&config);
+  return STATUS_SUCCESS;
+
+ config_load_error:
+  config_destroy(&config);
+  return STATUS_FAILURE;
+}
+
+
+/* *** Internal functions *** */
+
+/// Updates the parameter to a new value.
+static ret_status_t
+update_param(param_def_t* param_def, param_value_union_t new_value) {
+  param_updater_t callback = (param_def->updater ? 
+			      param_def->updater : &default_param_updater);
+  
+  return callback(param_def->type, param_def->id, 
+		  param_def->location, new_value);
 }
