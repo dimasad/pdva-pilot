@@ -2,7 +2,8 @@
 #define PDVA__MAVLINK_BRIDGE_H
 
 /** @file
- * MAVLink adapter header. Include this header instead of "mavlink.h".
+ * MAVLink adapter header.
+ * Include this file instead of "mavlink.h".
  */
 
 
@@ -20,8 +21,8 @@
 extern mavlink_system_t mavlink_system;
 
 /**
- * MAVLink convenience function for sending data. See "mavlink_helpers.h" for 
- * more info.
+ * MAVLink convenience function for sending data.
+ * See "mavlink_helpers.h" for more info.
  */
 ret_status_t mavlink_send_uart_bytes(mavlink_channel_t chan, 
 				     const uint8_t* buff, size_t len);

@@ -44,8 +44,8 @@ typedef union {
 
 /// Parameter update callback, should return 0 if successfully updated.
 typedef ret_status_t (*param_updater_t)(enum MAV_PARAM_TYPE type,
-					   const char* id, void* location,
-					   param_value_union_t new_value);
+					const char* id, void* location,
+					param_value_union_t new_value);
 
 /// Definition of a runtime parameter.
 typedef struct {
