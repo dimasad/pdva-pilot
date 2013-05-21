@@ -1,0 +1,26 @@
+<?xml version='1.0'?>
+<mavlink>
+     <include>common.xml</include>
+     <!-- pdva-pilot specific messages should use the message id
+      range from 150 to 240, which are reserved for extensions. -->
+     
+     <messages>
+          <message id="150" name="SENSOR_HEAD_DATA">
+               <description>Summary of all data available in the sensor head.</description>
+               <field type="uint32_t" name="time_boot_ms">Timestamp (milliseconds since system boot)</field>
+               <field type="uint16_t[3]" name="acc">Accelerometer readings (raw)</field>
+               <field type="uint16_t[3]" name="gyro">Gyrometer readings (raw)</field>
+               <field type="uint16_t" name="gyro_temp">Gyrometer temperature (raw)</field>
+               <field type="uint16_t[3]" name="mag">Magnetometer readings (raw)</field>
+               <field type="uint16_t[16]" name="adc">ADC readings (raw)</field>
+	       <field type="uint32_t" name="dyn_press">Dynamic pressure (raw)</field>
+	       <field type="uint32_t" name="stat_press">Static pressure (raw)</field>
+               <field type="int32_t" name="lat_gps">GPS latitude, expressed as * 1e7</field>
+               <field type="int32_t" name="lon_gps">GPS longitude, expressed as * 1e7</field>
+               <field type="int32_t" name="alt_gps">GPS altitude above MSL (millimeters)</field>
+               <field type="int16_t" name="hdg_gps">GPS heading (milliradians)</field>
+               <field type="int16_t[3]" name="vel_gps">GPS groundspeed (north, east, down * 0.01 m/s)</field>
+               <field type="int16_t[3]" name="att_est">Estimated attitude angles (roll, pitch, yaw in milliradians)</field>
+          </message>
+     </messages>
+</mavlink>

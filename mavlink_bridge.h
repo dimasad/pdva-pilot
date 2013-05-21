@@ -27,6 +27,6 @@ extern mavlink_system_t mavlink_system;
 void 
 mavlink_send_uart_bytes(mavlink_channel_t, const uint8_t*, size_t);
 
-#include "mavlink/v1.0/common/mavlink.h"
+#include "mavlink/v1.0/pdvapilot/mavlink.h"
 
 #endif // not PDVA__MAVLINK_BRIDGE_H

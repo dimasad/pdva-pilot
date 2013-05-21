@@ -45,7 +45,7 @@ typedef struct mav_component {
 
 static FILE *comm0; ///< Stream of the MAVLINK_COMM_0 channel.
 
-static mavlink_message_handler_t msg_handlers[255];
+static mavlink_message_handler_t msg_handlers[256];
 ///< Array with all registered message handlers, indexed by msgid.
 
 mav_component_t mav_components[MAX_MAV_COMPONENTS];

@@ -12,11 +12,10 @@
 #include "pdva-pilot.h"
 
 
-/* *** Macros *** */
-
-
 /* *** Types *** */
+
 typedef void (*mavlink_message_handler_t)(mavlink_message_t *);
+
 
 /* *** Functions *** */
 
@@ -28,7 +27,7 @@ void param_announce();
 mavlink_message_handler_t
 register_message_handler(uint8_t msgid, mavlink_message_handler_t handler);
 
-/// Read from communication buffers
+/// Read from communication buffers.
 void recv_comm();
 
 /// Register a MAVLink component.
