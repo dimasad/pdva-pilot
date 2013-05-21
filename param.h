@@ -20,7 +20,7 @@
 #define PARAM_DEF_LIST_END {MAV_PARAM_TYPE_ENUM_END, "", NULL, NULL}
 
 /// True if a param_def_t is the PARAM_DEF_LIST_END sentinel.
-#define IS_PARAM_DEF_LIST_END(pdef) (pdef.type == MAV_PARAM_TYPE_ENUM_END)
+#define IS_PARAM_DEF_LIST_END(pdef) ((pdef).type == MAV_PARAM_TYPE_ENUM_END)
 
 
 /* *** Types *** */
@@ -82,5 +82,9 @@ pdva_config_init(pdva_pilot_config_t *pdva_config);
 /// Load pdva-pilot configuration from file.
 ret_status_t
 pdva_config_load(pdva_pilot_config_t *pdva_config, const char *file);
+
+/// Updates the parameter to a new value.
+ret_status_t
+update_param(param_def_t* param_def, param_value_union_t new_value);
 
 #endif // not PDVA__PARAM_H

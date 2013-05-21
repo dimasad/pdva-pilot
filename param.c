@@ -14,12 +14,6 @@
 #include "param.h"
 
 
-/* *** Function prototypes *** */
-
-static ret_status_t
-update_param(param_def_t* param_def, param_value_union_t new_value);
-
-
 /* *** Public functions *** */
 
 ret_status_t
@@ -271,11 +265,7 @@ pdva_config_load(pdva_pilot_config_t *pdva_config, const char *file) {
   return STATUS_FAILURE;
 }
 
-
-/* *** Internal functions *** */
-
-/// Updates the parameter to a new value.
-static ret_status_t
+ret_status_t
 update_param(param_def_t* param_def, param_value_union_t new_value) {
   param_updater_t callback = (param_def->updater ? 
 			      param_def->updater : &default_param_updater);

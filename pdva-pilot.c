@@ -75,6 +75,9 @@ setup() {
   if (setup_comm())
     syslog(LOG_WARNING, "Could not setup communication module.");
 
+  //Register component with the communication module
+  register_mav_component(mavlink_system.compid, mav_params);
+  
   return STATUS_SUCCESS;
 }
 
@@ -92,7 +95,7 @@ main(int argc, char* argv[]) {
     syslog(LOG_CRIT, "Failure in pdva-pilot setup, aborting.");
     return EXIT_FAILURE;
   }
-  
+    
   teardown();
   return EXIT_SUCCESS;
 }
