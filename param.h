@@ -56,12 +56,15 @@ typedef struct {
 } param_def_t;
 
 
+/* *** Global variables *** */
+extern pdva_pilot_config_t pdva_config;
+
+
 /* *** Functions *** */
 
-/// Default parameter updater callback.
-ret_status_t
-default_param_updater(enum MAV_PARAM_TYPE type, const char* id,
-		      void* location, param_value_union_t new_value);
+/// Get current value of a given parameter
+param_value_union_t
+param_get(param_def_t *param_def);
 
 /// Load runtime parameters from given file.
 ret_status_t

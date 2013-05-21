@@ -5,6 +5,7 @@
 
 /* *** Includes *** */
 
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
@@ -14,42 +15,51 @@
 #include "param.h"
 
 
+/* *** Prototypes *** */
+
+/// Default parameter updater callback.
+ret_status_t
+default_param_updater(enum MAV_PARAM_TYPE type, const char* id,
+		      void* location, param_value_union_t new_value);
+
+
 /* *** Public functions *** */
 
-ret_status_t
-default_param_updater(enum MAV_PARAM_TYPE type, const char* id, 
-		      void* location, param_value_union_t new_value) {
-  switch (type) {
+param_value_union_t
+param_get(param_def_t *param_def) {
+  param_value_union_t ret;
+  switch (param_def->type) {
   case MAV_PARAM_TYPE_UINT8:
-    *(uint8_t*)location = new_value.param_uint8;
+    ret.param_uint8 = *(uint8_t*)param_def->location;
     break;
   case MAV_PARAM_TYPE_UINT16:
-    *(uint16_t*)location = new_value.param_uint16;
+    ret.param_uint16 = *(uint16_t*)param_def->location;
     break;
   case MAV_PARAM_TYPE_UINT32:
-    *(uint32_t*)location = new_value.param_uint32;
+    ret.param_uint32 = *(uint32_t*)param_def->location;
     break;
   case MAV_PARAM_TYPE_INT8:
-    *(int8_t*)location = new_value.param_int8;
+    ret.param_int8 = *(int8_t*)param_def->location;
     break;
   case MAV_PARAM_TYPE_INT16:
-    *(int16_t*)location = new_value.param_int16;
+    ret.param_int16 = *(int16_t*)param_def->location;
     break;
   case MAV_PARAM_TYPE_INT32:
-    *(int32_t*)location = new_value.param_int32;
+    ret.param_int32 = *(int32_t*)param_def->location;
     break;
   case MAV_PARAM_TYPE_REAL32:
-    *(float*)location = new_value.param_float;
+    ret.param_float = *(float*)param_def->location;
     break;
     
   default:
-    syslog(LOG_WARNING, "Unsupported parameter type %d (%s)%d.",
-	   type, __FILE__, __LINE__);
-    return STATUS_FAILURE;
+    ret.param_float = NAN;
+    syslog(LOG_ERR, "Unsupported parameter type %d (%s)%d.",
+	   param_def->type, __FILE__, __LINE__);
   }
-  
-  return STATUS_SUCCESS;
+
+  return ret;
 }
+
 
 ret_status_t
 param_load(param_def_t params[], const char* file) {
@@ -272,4 +282,42 @@ update_param(param_def_t* param_def, param_value_union_t new_value) {
   
   return callback(param_def->type, param_def->id, 
 		  param_def->location, new_value);
+}
+
+
+/* *** Internal functions *** */
+
+ret_status_t
+default_param_updater(enum MAV_PARAM_TYPE type, const char* id, 
+		      void* location, param_value_union_t new_value) {
+  switch (type) {
+  case MAV_PARAM_TYPE_UINT8:
+    *(uint8_t*)location = new_value.param_uint8;
+    break;
+  case MAV_PARAM_TYPE_UINT16:
+    *(uint16_t*)location = new_value.param_uint16;
+    break;
+  case MAV_PARAM_TYPE_UINT32:
+    *(uint32_t*)location = new_value.param_uint32;
+    break;
+  case MAV_PARAM_TYPE_INT8:
+    *(int8_t*)location = new_value.param_int8;
+    break;
+  case MAV_PARAM_TYPE_INT16:
+    *(int16_t*)location = new_value.param_int16;
+    break;
+  case MAV_PARAM_TYPE_INT32:
+    *(int32_t*)location = new_value.param_int32;
+    break;
+  case MAV_PARAM_TYPE_REAL32:
+    *(float*)location = new_value.param_float;
+    break;
+    
+  default:
+    syslog(LOG_WARNING, "Unsupported parameter type %d (%s)%d.",
+	   type, __FILE__, __LINE__);
+    return STATUS_FAILURE;
+  }
+  
+  return STATUS_SUCCESS;
 }
