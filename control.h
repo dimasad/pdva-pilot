@@ -19,6 +19,9 @@
 /// Setup the control module.
 ret_status_t setup_control();
 
+/// Start the control loop.
+ret_status_t start_control();
+
 /// Free resources associated with the control module.
 void teardown_control();
 
