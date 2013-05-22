@@ -8,23 +8,25 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <syslog.h>
-
-#include <libconfig.h>
 
 #include "comm.h"
 #include "mavlink_bridge.h"
 #include "param.h"
 
 
+//This include provides function definitions.
+#include "mavlink/v1.0/mavlink_helpers.h"
+
 /* *** Macros *** */
 
-#ifndef COMM0_PATH
-#define COMM0_PATH "/dev/ttyS2"
-///< File path of the COMM0 mavlink channel.
-#endif // not COMM0_PATH
+#ifndef RADIO_STREAM_PATH
+#define RADIO_STREAM_PATH "/dev/ttyS2"
+///< File path of the RADIO_COMM_CHANNEL.
+#endif // not RADIO_STREAM_PATH
 
 #ifndef MAX_MAV_COMPONENTS
 #define MAX_MAV_COMPONENTS 2
@@ -43,7 +45,7 @@ typedef struct mav_component {
 
 /* *** Internal variables *** */
 
-static FILE *comm0; ///< Stream of the MAVLINK_COMM_0 channel.
+static FILE *radio; ///< Stream of the RADIO_COMM_CHANNEL channel.
 
 static mavlink_message_handler_t msg_handlers[256];
 ///< Array with all registered message handlers, indexed by msgid.
@@ -74,8 +76,9 @@ static void param_set_handler(mavlink_message_t *msg);
 void
 mavlink_send_uart_bytes(mavlink_channel_t chan, const uint8_t* buff, 
 			size_t len) {
-  if (chan != MAVLINK_COMM_0)
-    syslog(LOG_ERR, "Error unblocking signals: %m (%s)%d", __FILE__, __LINE__);
+  if (chan != RADIO_COMM_CHANNEL)
+    syslog(LOG_ERR, "Unsupported channel #%d for utility function "
+	   "mavlink_send_uart_bytes.", chan, __FILE__, __LINE__);
   
   //Block all signals
   sigset_t set, old_set;
@@ -83,7 +86,7 @@ mavlink_send_uart_bytes(mavlink_channel_t chan, const uint8_t* buff,
   sigprocmask(SIG_BLOCK, &set, &old_set);
 
   //Write data
-  size_t written = fwrite(buff, len, 1, comm0);
+  size_t written = fwrite(buff, len, 1, radio);
 
   //Treat error
   if (written != len) {
@@ -124,7 +127,7 @@ param_announce() {
   //Send the message
   uint8_t buf[MAVLINK_MSG_ID_PARAM_VALUE_LEN];
   size_t len = mavlink_msg_to_send_buffer(buf, &msg);
-  mavlink_send_uart_bytes(MAVLINK_COMM_0, buf, len);
+  mavlink_send_uart_bytes(RADIO_COMM_CHANNEL, buf, len);
   
   //Move to next parameter and check end of parameter list
   if (++announce_param_index >= comp->param_count) {
@@ -171,9 +174,9 @@ recv_comm() {
   mavlink_status_t status;
 
   //Read from stream until it would block or an error occurs
-  for (int data = fgetc(comm0); data != EOF; data = fgetc(comm0)) {
+  for (int data = fgetc(radio); data != EOF; data = fgetc(radio)) {
     
-    if(mavlink_parse_char(MAVLINK_COMM_0, data, &msg, &status)) {
+    if(mavlink_parse_char(RADIO_COMM_CHANNEL, data, &msg, &status)) {
       //Retrieve message handler
       mavlink_message_handler_t handler = msg_handlers[msg.msgid];
       
@@ -184,34 +187,33 @@ recv_comm() {
   }
   
   //Treat error condition
-  if (ferror(comm0)) {
+  if (ferror(radio)) {
     switch (errno) {
     case EAGAIN: 
     case EINTR:
       break;
       
     default:
-      syslog(LOG_ERR, "Error during MAVLINK_COMM_0 read: %m (%s)%d", 
+      syslog(LOG_ERR, "Error during RADIO_COMM_CHANNEL read: %m (%s)%d", 
 	     __FILE__, __LINE__);
     }
   }
 
   //Clear the end-of-file and error indicators
-  clearerr(comm0);
+  clearerr(radio);
 }
 
 ret_status_t setup_comm() {
   //Open stream
-  comm0 = fopen(COMM0_PATH, "r+");
-  if (!comm0) {
-    syslog(LOG_ERR, "Error opening COMM_0 mavlink channel at `%s': %m (%s)%d",
-	   COMM0_PATH, __FILE__, __LINE__);
-    
+  radio = fopen(RADIO_STREAM_PATH, "r+");
+  if (!radio) {
+    syslog(LOG_ERR, "Error opening RADIO_COMM_CHANNEL stream at `%s': %m "
+	   "(%s)%d", RADIO_STREAM_PATH, __FILE__, __LINE__);    
     return STATUS_FAILURE;
   }
   
   //Set stream for nonblocking operation
-  fcntl(fileno(comm0), F_SETFL, O_NONBLOCK);
+  fcntl(fileno(radio), F_SETFL, O_NONBLOCK);
   
   //Set handler for PARAM_SET message.
   register_message_handler(MAVLINK_MSG_ID_PARAM_SET, &param_set_handler);
@@ -224,8 +226,8 @@ ret_status_t setup_comm() {
 }
 
 void teardown_comm() {
-  //Close the COMM0 channel
-  fclose(comm0);
+  //Close the RADIO_COMM_CHANNEL
+  fclose(radio);
 }
 
 
@@ -334,7 +336,7 @@ static void param_set_handler(mavlink_message_t *msg) {
 
     uint8_t buf[MAVLINK_MSG_ID_PARAM_VALUE_LEN];
     size_t len = mavlink_msg_to_send_buffer(buf, &msg);
-    mavlink_send_uart_bytes(MAVLINK_COMM_0, buf, len);
+    mavlink_send_uart_bytes(RADIO_COMM_CHANNEL, buf, len);
   }
   
   //Restore blocked signals

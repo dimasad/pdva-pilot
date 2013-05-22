@@ -1,5 +1,5 @@
-#ifndef PDVA_COMM_H
-#define PDVA_COMM_H
+#ifndef PDVA__COMM_H
+#define PDVA__COMM_H
 
 /** @file
  * Contains the MAVLink communication infrastructure.
@@ -41,4 +41,4 @@ void teardown_comm();
 
 
 
-#endif // not PDVA_COMM_H
+#endif // not PDVA__COMM_H

@@ -9,6 +9,7 @@
 #include <libconfig.h>
 
 #include "comm.h"
+#include "control.h"
 #include "mavlink_bridge.h"
 #include "param.h"
 #include "pdva-pilot.h"
@@ -72,8 +73,16 @@ setup() {
     syslog(LOG_WARNING, "Could not load parameters, using default values.");
   
   //Setup the communication module
-  if (setup_comm())
-    syslog(LOG_WARNING, "Could not setup communication module.");
+  if (setup_comm()) {
+    syslog(LOG_WARNING, "Could not setup the communication module.");
+    return STATUS_FAILURE;
+  }
+
+  //Setup the control module
+  if (setup_control()) {
+    syslog(LOG_ERR, "Could not setup the control module.");
+    return STATUS_FAILURE;
+  }
 
   //Register component with the communication module
   register_mav_component(mavlink_system.compid, mav_params);
@@ -85,6 +94,7 @@ void
 teardown() {
   pdva_config_destroy(&pdva_config);
   teardown_comm();
+  teardown_control();
   closelog();
 }
 
@@ -95,7 +105,7 @@ main(int argc, char* argv[]) {
     syslog(LOG_CRIT, "Failure in pdva-pilot setup, aborting.");
     return EXIT_FAILURE;
   }
-    
+  
   teardown();
   return EXIT_SUCCESS;
 }

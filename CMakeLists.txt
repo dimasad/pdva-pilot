@@ -9,10 +9,11 @@ find_library (LIBCONFIG_LIBRARIES NAMES config libconfig)
 set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99")
 #include_directories (./mavlink)
 
-add_library (param param.c)
 add_library (comm comm.c)
+add_library (control control.c)
+add_library (param param.c)
 
 add_executable (pdva-pilot pdva-pilot.c)
-target_link_libraries (pdva-pilot param comm rt ${LIBCONFIG_LIBRARIES})
+target_link_libraries (pdva-pilot param comm control rt ${LIBCONFIG_LIBRARIES})
 
 install (TARGETS pdva-pilot DESTINATION bin)
