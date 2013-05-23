@@ -57,6 +57,7 @@ typedef struct {
 
 
 /* *** Global variables *** */
+
 extern pdva_pilot_config_t pdva_config;
 
 

@@ -17,6 +17,7 @@
 
 #include "mavlink_bridge.h"
 #include "param.h"
+#include "pid.h"
 
 
 /* *** Macros *** */
@@ -35,6 +36,7 @@
 #define CONTROL_TIMER_PERIOD_NS 500000000L
 ///< Period of the control loop in nanosecods.
 #endif // not CONTROL_TIMER_PERIOD_NS
+
 
 /* *** Prototypes *** */
 
@@ -203,9 +205,10 @@ read_sensor_head() {
 static inline ret_status_t write_control() {
   //Encode the MAVLink message
   mavlink_message_t msg;    
-  mavlink_msg_servo_output_raw_encode(pdva_config.sysid,
-				      mavlink_system.compid, &msg,
-				      &output);
+  mavlink_msg_servo_output_raw_encode_chan(pdva_config.sysid,
+					   mavlink_system.compid,
+					   SENSOR_HEAD_COMM_CHANNEL, &msg,
+					   &output);
   
   //Write to buffer
   uint8_t buf[MAVLINK_MSG_ID_SERVO_OUTPUT_RAW_LEN];
