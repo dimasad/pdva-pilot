@@ -18,7 +18,7 @@ typedef void (*mavlink_message_handler_t)(mavlink_message_t *);
 
 
 /* *** Functions *** */
-
+/*
 /// Announce parameters as a response to PARAM_REQUEST_LIST message.
 void param_announce();
 
@@ -38,7 +38,7 @@ ret_status_t setup_comm();
 
 /// Free resources associated with the communication module.
 void teardown_comm();
-
+*/
 
 
 #endif // not PDVA__COMM_H

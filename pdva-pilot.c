@@ -8,8 +8,8 @@
 
 #include <libconfig.h>
 
-#include "comm.h"
-#include "control.h"
+//#include "comm.h"
+//#include "control.h"
 #include "mavlink_bridge.h"
 #include "param.h"
 #include "pdva-pilot.h"
@@ -40,6 +40,8 @@ pdva_pilot_config_t pdva_config;
 float dummy1 = 0.1; ///< A dummy parameter for testing.
 uint8_t dummy2 = 4; ///< Another dummy parameter.
 
+param_handler_t param_handler; ///< The runtime parameter handler.
+/*
 param_def_t mav_params[] = {
   {MAV_PARAM_TYPE_REAL32, "dummy1", &dummy1, NULL},
   {MAV_PARAM_TYPE_UINT8, "dummy2", &dummy2, NULL},
@@ -53,7 +55,7 @@ ret_status_t
 setup() {
   //Configure logging
   openlog("pdva-pilot", LOG_CONS | LOG_PERROR | LOG_PID, LOG_USER);
-
+  
   //Load pdva-pilot configuration
   pdva_config_init(&pdva_config);
   if (pdva_config_load(&pdva_config, PDVA_CONFIG_DIR "/pdva-pilot.cfg"))
@@ -68,16 +70,23 @@ setup() {
   mavlink_system.mode = MAV_MODE_PREFLIGHT;
   mavlink_system.nav_mode = 0;
   
-  //Load parameters
-  if (param_load(mav_params, PDVA_CONFIG_DIR "/mav_params.cfg"))
+  //Setup parameter handler and register parameters
+  param_handler_init(&param_handler, 2);
+  param_register(&param_handler, MAV_PARAM_TYPE_REAL32, "dummy1", &dummy1,NULL);
+  param_register(&param_handler, MAV_PARAM_TYPE_UINT8, "dummy2", &dummy2, NULL);
+    
+  
+  //Load parameters from file
+  if (param_load(&param_handler, PDVA_CONFIG_DIR "/mav_params.cfg"))
     syslog(LOG_WARNING, "Could not load parameters, using default values.");
   
+  /*
   //Setup the communication module
   if (setup_comm()) {
     syslog(LOG_WARNING, "Could not setup the communication module.");
     return STATUS_FAILURE;
   }
-
+  
   //Setup the control module
   if (setup_control()) {
     syslog(LOG_ERR, "Could not setup the control module.");
@@ -86,6 +95,7 @@ setup() {
 
   //Register component with the communication module
   register_mav_component(mavlink_system.compid, mav_params);
+  */
   
   return STATUS_SUCCESS;
 }
@@ -93,8 +103,8 @@ setup() {
 void 
 teardown() {
   pdva_config_destroy(&pdva_config);
-  teardown_comm();
-  teardown_control();
+  //teardown_comm();
+  //teardown_control();
   closelog();
 }
 

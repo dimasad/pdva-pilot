@@ -5,6 +5,8 @@
 
 /* *** Includes *** */
 
+#include <syslog.h>
+
 #include "pid.h"
 
 
@@ -12,7 +14,7 @@
 
 float 
 pid_update(pid_controller_t *pid, float ref, float meas) {
-  syslog(LOG_WARNING, "Manual/automatic mode not yet implemented.")
+  syslog(LOG_WARNING, "Manual/automatic mode not yet implemented.");
 
   //Calculate the error
   float error = ref - meas;

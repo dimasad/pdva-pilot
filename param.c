@@ -17,10 +17,10 @@
 
 /* *** Prototypes *** */
 
-/// Default parameter updater callback.
+/// Default parameter setter callback.
 ret_status_t
-default_param_updater(enum MAV_PARAM_TYPE type, const char* id,
-		      void* location, param_value_union_t new_value);
+default_param_setter(enum MAV_PARAM_TYPE type, const char* id,
+		     void* location, param_value_union_t new_value);
 
 
 /* *** Public functions *** */
@@ -56,17 +56,63 @@ param_get(param_def_t *param_def) {
     syslog(LOG_ERR, "Unsupported parameter type %d (%s)%d.",
 	   param_def->type, __FILE__, __LINE__);
   }
-
+  
   return ret;
 }
 
+ret_status_t
+param_set(param_def_t* param_def, param_value_union_t new_value) {
+  param_setter_t callback = (param_def->setter ? 
+			     param_def->setter : &default_param_setter);
+  
+  return callback(param_def->type, param_def->id, 
+		  param_def->location, new_value);
+}
+
+void
+param_handler_init(param_handler_t *handler, size_t max_param_count) {
+  handler->param_count = 0;
+  handler->max_param_count = max_param_count;
+  handler->param_def = malloc(max_param_count * sizeof(param_def_t));
+  handler->id_map = g_hash_table_new(g_str_hash, g_str_equal);
+}
+
+void
+param_handler_destroy(param_handler_t *handler) {
+  g_hash_table_destroy(handler->id_map);
+  free(handler->param_def);
+}
+
+void
+param_register(param_handler_t *handler, enum MAV_PARAM_TYPE type,
+	       const char *id, void *location, param_setter_t setter) {
+  //Check if there is preallocated space available
+  if (handler->param_count >= handler->max_param_count) {
+    syslog(LOG_ERR, "Not enough space to register parameter (%s)%d.", 
+	   __FILE__, __LINE__);
+    return;
+  }
+  
+  //Get the next available parameter definition
+  param_def_t *def = handler->param_def + handler->param_count++;
+
+  //Copy the fields
+  def->type = type;
+  def->location = location;
+  def->setter = setter;
+  strncpy(def->id, id, MAX_LENGTH_PARAM_ID);
+  def->id[MAX_LENGTH_PARAM_ID] = 0; //Sentinel nul byte
+
+  //Insert the definition in the id map hash table
+  g_hash_table_insert(handler->id_map, (gpointer)id, def);
+}
 
 ret_status_t
-param_load(param_def_t params[], const char* file) {
+param_load(param_handler_t *handler, const char *file) {
   //Create configuration file object
   config_t config;
   config_init(&config);
-
+  
   //Read configuration file
   if (!config_read_file(&config, file)) {
     syslog(LOG_ERR, "Error reading parameters file `%s': %s at line %d (%s)%d.",
@@ -76,84 +122,57 @@ param_load(param_def_t params[], const char* file) {
   }
   
   //Load values into parameters
-  for (int i = 0; !IS_PARAM_DEF_LIST_END(params[i]); i++) {
-    long lvalue;
+  for (int i = 0; i < handler->param_count; i++) {
+    int ivalue;
     double dvalue;
-    param_value_union_t pvalue;
+    param_def_t *param_def = handler->param_def + i;
     
-    switch (params[i].type) {
+    //Lookup the value
+    switch (param_def->type) {
     case MAV_PARAM_TYPE_UINT8:
-      if (config_lookup_int(&config, params[i].id, &lvalue)) {
-	pvalue.param_uint8 = lvalue;
-	if (lvalue < 0 || lvalue > UINT8_MAX)
-	  syslog(LOG_WARNING, "Parameter value %ld for `%s' out of range "
-		 "(%s)%d.", lvalue, params[i].id, __FILE__, __LINE__);
-	else
-	  update_param(params + i, pvalue);
-      }
-      break;
     case MAV_PARAM_TYPE_UINT16:
-      if (config_lookup_int(&config, params[i].id, &lvalue)) {
-	pvalue.param_uint16 = lvalue;
-	if (lvalue < 0 || lvalue > UINT16_MAX)
-	  syslog(LOG_WARNING, "Parameter value %ld for `%s' out of range "
-		 "(%s)%d.", lvalue, params[i].id, __FILE__, __LINE__);
-	else
-	  update_param(params + i, pvalue);
-      }
-      break;
     case MAV_PARAM_TYPE_UINT32:
-      if (config_lookup_int(&config, params[i].id, &lvalue)) {
-	pvalue.param_uint32 = lvalue;
-	if (lvalue < 0 || lvalue > UINT32_MAX)
-	  syslog(LOG_WARNING, "Parameter value %ld for `%s' out of range "
-		 "(%s)%d.", lvalue, params[i].id, __FILE__, __LINE__);
-	else
-	  update_param(params + i, pvalue);
-      }
-      break;
     case MAV_PARAM_TYPE_INT8:
-      if (config_lookup_int(&config, params[i].id, &lvalue)) {
-	pvalue.param_int8 = lvalue;
-	if (lvalue < INT8_MIN || lvalue > INT8_MAX)
-	  syslog(LOG_WARNING, "Parameter value %ld for `%s' out of range "
-		 "(%s)%d.", lvalue, params[i].id, __FILE__, __LINE__);
-	else
-	  update_param(params + i, pvalue);
-      }
-      break;
     case MAV_PARAM_TYPE_INT16:
-      if (config_lookup_int(&config, params[i].id, &lvalue)) {
-	pvalue.param_int16 = lvalue;
-	if (lvalue < INT16_MIN || lvalue > INT16_MAX)
-	  syslog(LOG_WARNING, "Parameter value %ld for `%s' out of range "
-		 "(%s)%d.", lvalue, params[i].id, __FILE__, __LINE__);
-	else
-	  update_param(params + i, pvalue);
-      }
-      break;
     case MAV_PARAM_TYPE_INT32:
-      if (config_lookup_int(&config, params[i].id, &lvalue)) {
-	pvalue.param_int32 = lvalue;
-	if (lvalue < INT32_MIN || lvalue > INT32_MAX)
-	  syslog(LOG_WARNING, "Parameter value %ld for `%s' out of range "
-		 "(%s)%d.", lvalue, params[i].id, __FILE__, __LINE__);
-	else
-	  update_param(params + i, pvalue);
-      }
+      if (!config_lookup_int(&config, param_def->id, &ivalue))
+	continue;
       break;
     case MAV_PARAM_TYPE_REAL32:
-      if (config_lookup_float(&config, params[i].id, &dvalue)) {
-	pvalue.param_float = dvalue;
-	update_param(params + i, pvalue);
-      }
+      if (!config_lookup_float(&config, param_def->id, &dvalue))
+	continue;
       break;
-      
     default:
-      syslog(LOG_WARNING, "Unsupported parameter type %d (%s)%d.",
-	     params[i].type, __FILE__, __LINE__);
-    }   
-  } 
+      syslog(LOG_ERR, "Unsupported parameter type %d (%s)%d.",
+	     param_def->type, __FILE__, __LINE__);
+      continue;
+    }
+    
+    //Set the parameter value
+    switch (param_def->type) {
+    case MAV_PARAM_TYPE_UINT8:
+      *(uint8_t*)param_def->location = ivalue;
+      break;
+    case MAV_PARAM_TYPE_UINT16:
+      *(uint16_t*)param_def->location = ivalue;
+      break;
+    case MAV_PARAM_TYPE_UINT32:
+      *(uint32_t*)param_def->location = ivalue;
+      break;
+    case MAV_PARAM_TYPE_INT8:
+      *(int8_t*)param_def->location = ivalue;
+      break;
+    case MAV_PARAM_TYPE_INT16:
+      *(int16_t*)param_def->location = ivalue;
+      break;
+    case MAV_PARAM_TYPE_INT32:
+      *(int32_t*)param_def->location = ivalue;
+      break;
+    case MAV_PARAM_TYPE_REAL32:
+      *(float*)param_def->location = dvalue;
+      break;
+    }
+  }
   
   config_destroy(&config);
   return STATUS_SUCCESS;
@@ -164,7 +183,7 @@ param_load(param_def_t params[], const char* file) {
 }
 
 ret_status_t
-param_save(param_def_t params[], const char* file) {
+param_save(param_handler_t *handler, const char *file) {
   //Create configuration file object
   config_t config;
   config_init(&config);
@@ -179,64 +198,73 @@ param_save(param_def_t params[], const char* file) {
   //Get pointer into root configuration setting.
   config_setting_t* root = config_root_setting(&config);
   
-  //Load values into parameters
-  for (int i = 0; !IS_PARAM_DEF_LIST_END(params[i]); i++) {
-    config_setting_t* setting = config_setting_get_member(root, params[i].id);
+  //Populate configuration tree
+  for (int i = 0; i < handler->param_count; i++) {
+    int ivalue;
+    double dvalue;
+    param_def_t *param_def = handler->param_def + i;
     
-    switch (params[i].type) {
+    //Get the parameter value
+    switch (param_def->type) {
     case MAV_PARAM_TYPE_UINT8:
-      if(!setting)
-	setting = config_setting_add(root, params[i].id, CONFIG_TYPE_INT);
-      config_setting_set_int(setting, *(uint8_t*)params[i].location);
+      ivalue = *(uint8_t*)param_def->location;
       break;
     case MAV_PARAM_TYPE_UINT16:
-      if(!setting)
-	setting = config_setting_add(root, params[i].id, CONFIG_TYPE_INT);
-      config_setting_set_int(setting, *(uint16_t*)params[i].location);
+      ivalue = *(uint16_t*)param_def->location;
       break;
     case MAV_PARAM_TYPE_UINT32:
-      if(!setting)
-	setting = config_setting_add(root, params[i].id, CONFIG_TYPE_INT);
-      config_setting_set_int(setting, *(uint32_t*)params[i].location);
+      ivalue = *(uint32_t*)param_def->location;
       break;
     case MAV_PARAM_TYPE_INT8:
-      if(!setting)
-	setting = config_setting_add(root, params[i].id, CONFIG_TYPE_INT);
-      config_setting_set_int(setting, *(int8_t*)params[i].location);
+      ivalue = *(int8_t*)param_def->location;
       break;
     case MAV_PARAM_TYPE_INT16:
-      if(!setting)
-	setting = config_setting_add(root, params[i].id, CONFIG_TYPE_INT);
-      config_setting_set_int(setting, *(int16_t*)params[i].location);
+      ivalue = *(int16_t*)param_def->location;
       break;
     case MAV_PARAM_TYPE_INT32:
-      if(!setting)
-	setting = config_setting_add(root, params[i].id, CONFIG_TYPE_INT);
-      config_setting_set_int(setting, *(int32_t*)params[i].location);
+      ivalue = *(int32_t*)param_def->location;
       break;
     case MAV_PARAM_TYPE_REAL32:
-      if(!setting)
-	setting = config_setting_add(root, params[i].id, CONFIG_TYPE_FLOAT);
-      config_setting_set_float(setting, *(float*)params[i].location);
+      dvalue = *(float*)param_def->location;
       break;
       
     default:
-      syslog(LOG_WARNING, "Unsupported parameter type %d (%s)%d.",
-	     params[i].type, __FILE__, __LINE__);
-    }   
-  } 
+      syslog(LOG_ERR, "Unsupported parameter type %d (%s)%d.",
+	     param_def->type, __FILE__, __LINE__);
+      continue;
+    }
+    
+    //Add to the configuration tree
+    config_setting_t *setting;
+    switch (param_def->type) {
+    case MAV_PARAM_TYPE_UINT8:
+    case MAV_PARAM_TYPE_UINT16:
+    case MAV_PARAM_TYPE_UINT32:
+    case MAV_PARAM_TYPE_INT8:
+    case MAV_PARAM_TYPE_INT16:
+    case MAV_PARAM_TYPE_INT32:
+      setting = config_setting_add(root, param_def->id, CONFIG_TYPE_INT);
+      config_setting_set_int(setting, ivalue);
+      break;
+    case MAV_PARAM_TYPE_REAL32:
+      setting = config_setting_add(root, param_def->id, CONFIG_TYPE_FLOAT);
+      config_setting_set_float(setting, dvalue);
+      break;
+    }
+  }
 
   if(!config_write_file(&config, file))
     syslog(LOG_ERR, "Error writing parameters to `%s': %m (%s)%d.",
 	   file, __FILE__, __LINE__);
-
+  
   config_destroy(&config);
   return STATUS_SUCCESS;  
-
+  
  param_save_error:
   config_destroy(&config);
   return STATUS_FAILURE;
 }
+
 
 void 
 pdva_config_destroy(pdva_pilot_config_t *pdva_config) {
@@ -263,7 +291,7 @@ pdva_config_load(pdva_pilot_config_t *pdva_config, const char *file) {
     goto config_load_error;
   }
   
-  long sysid;
+  int sysid;
   if (config_lookup_int(&config, "sysid", &sysid))
     pdva_config->sysid = sysid;
 
@@ -275,21 +303,12 @@ pdva_config_load(pdva_pilot_config_t *pdva_config, const char *file) {
   return STATUS_FAILURE;
 }
 
-ret_status_t
-update_param(param_def_t* param_def, param_value_union_t new_value) {
-  param_updater_t callback = (param_def->updater ? 
-			      param_def->updater : &default_param_updater);
-  
-  return callback(param_def->type, param_def->id, 
-		  param_def->location, new_value);
-}
-
 
 /* *** Internal functions *** */
 
 ret_status_t
-default_param_updater(enum MAV_PARAM_TYPE type, const char* id, 
-		      void* location, param_value_union_t new_value) {
+default_param_setter(enum MAV_PARAM_TYPE type, const char* id, 
+		     void* location, param_value_union_t new_value) {
   switch (type) {
   case MAV_PARAM_TYPE_UINT8:
     *(uint8_t*)location = new_value.param_uint8;

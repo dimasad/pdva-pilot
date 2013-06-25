@@ -106,7 +106,7 @@ mavlink_send_uart_bytes(mavlink_channel_t chan, const uint8_t* buff,
   //Restore blocked signals
   sigprocmask(SIG_SETMASK, &old_set, NULL);
 }
-
+/*
 void 
 param_announce() {
   //See if there is need for announcement
@@ -232,7 +232,7 @@ void teardown_comm() {
 
 
 /* *** Internal functions *** */
-
+/*
 static param_def_t *
 find_param_def(uint8_t compid, const char *param_id, int *param_index, 
 	       int *param_count) {
@@ -342,3 +342,4 @@ static void param_set_handler(mavlink_message_t *msg) {
   //Restore blocked signals
   sigprocmask(SIG_SETMASK, &old_set, NULL);
 }
+*/
