@@ -63,11 +63,6 @@ typedef struct {
 } param_handler_t;
 
 
-/* *** Global variables *** */
-
-extern pdva_pilot_config_t pdva_config;
-
-
 /* *** Functions *** */
 
 /// Get current value of a given parameter

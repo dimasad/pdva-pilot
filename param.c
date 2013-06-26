@@ -123,7 +123,7 @@ param_load(param_handler_t *handler, const char *file) {
   
   //Load values into parameters
   for (int i = 0; i < handler->param_count; i++) {
-    int ivalue;
+    long long llvalue;
     double dvalue;
     param_def_t *param_def = handler->param_def + i;
     
@@ -135,7 +135,7 @@ param_load(param_handler_t *handler, const char *file) {
     case MAV_PARAM_TYPE_INT8:
     case MAV_PARAM_TYPE_INT16:
     case MAV_PARAM_TYPE_INT32:
-      if (!config_lookup_int(&config, param_def->id, &ivalue))
+      if (!config_lookup_int64(&config, param_def->id, &llvalue))
 	continue;
       break;
     case MAV_PARAM_TYPE_REAL32:
@@ -151,22 +151,22 @@ param_load(param_handler_t *handler, const char *file) {
     //Set the parameter value
     switch (param_def->type) {
     case MAV_PARAM_TYPE_UINT8:
-      *(uint8_t*)param_def->location = ivalue;
+      *(uint8_t*)param_def->location = llvalue;
       break;
     case MAV_PARAM_TYPE_UINT16:
-      *(uint16_t*)param_def->location = ivalue;
+      *(uint16_t*)param_def->location = llvalue;
       break;
     case MAV_PARAM_TYPE_UINT32:
-      *(uint32_t*)param_def->location = ivalue;
+      *(uint32_t*)param_def->location = llvalue;
       break;
     case MAV_PARAM_TYPE_INT8:
-      *(int8_t*)param_def->location = ivalue;
+      *(int8_t*)param_def->location = llvalue;
       break;
     case MAV_PARAM_TYPE_INT16:
-      *(int16_t*)param_def->location = ivalue;
+      *(int16_t*)param_def->location = llvalue;
       break;
     case MAV_PARAM_TYPE_INT32:
-      *(int32_t*)param_def->location = ivalue;
+      *(int32_t*)param_def->location = llvalue;
       break;
     case MAV_PARAM_TYPE_REAL32:
       *(float*)param_def->location = dvalue;
@@ -200,29 +200,29 @@ param_save(param_handler_t *handler, const char *file) {
   
   //Populate configuration tree
   for (int i = 0; i < handler->param_count; i++) {
-    int ivalue;
+    long long llvalue;
     double dvalue;
     param_def_t *param_def = handler->param_def + i;
     
     //Get the parameter value
     switch (param_def->type) {
     case MAV_PARAM_TYPE_UINT8:
-      ivalue = *(uint8_t*)param_def->location;
+      llvalue = *(uint8_t*)param_def->location;
       break;
     case MAV_PARAM_TYPE_UINT16:
-      ivalue = *(uint16_t*)param_def->location;
+      llvalue = *(uint16_t*)param_def->location;
       break;
     case MAV_PARAM_TYPE_UINT32:
-      ivalue = *(uint32_t*)param_def->location;
+      llvalue = *(uint32_t*)param_def->location;
       break;
     case MAV_PARAM_TYPE_INT8:
-      ivalue = *(int8_t*)param_def->location;
+      llvalue = *(int8_t*)param_def->location;
       break;
     case MAV_PARAM_TYPE_INT16:
-      ivalue = *(int16_t*)param_def->location;
+      llvalue = *(int16_t*)param_def->location;
       break;
     case MAV_PARAM_TYPE_INT32:
-      ivalue = *(int32_t*)param_def->location;
+      llvalue = *(int32_t*)param_def->location;
       break;
     case MAV_PARAM_TYPE_REAL32:
       dvalue = *(float*)param_def->location;
@@ -243,8 +243,8 @@ param_save(param_handler_t *handler, const char *file) {
     case MAV_PARAM_TYPE_INT8:
     case MAV_PARAM_TYPE_INT16:
     case MAV_PARAM_TYPE_INT32:
-      setting = config_setting_add(root, param_def->id, CONFIG_TYPE_INT);
-      config_setting_set_int(setting, ivalue);
+      setting = config_setting_add(root, param_def->id, CONFIG_TYPE_INT64);
+      config_setting_set_int64(setting, llvalue);
       break;
     case MAV_PARAM_TYPE_REAL32:
       setting = config_setting_add(root, param_def->id, CONFIG_TYPE_FLOAT);
@@ -294,7 +294,7 @@ pdva_config_load(pdva_pilot_config_t *pdva_config, const char *file) {
   int sysid;
   if (config_lookup_int(&config, "sysid", &sysid))
     pdva_config->sysid = sysid;
-
+  
   config_destroy(&config);
   return STATUS_SUCCESS;
 
