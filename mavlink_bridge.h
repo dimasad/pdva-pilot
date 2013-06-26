@@ -13,22 +13,10 @@
 #include "pdva-pilot.h"
 
 #define MAVLINK_COMM_NUM_BUFFERS 2
-#define MAVLINK_SEND_UART_BYTES mavlink_send_uart_bytes
 #define MAVLINK_SEPARATE_HELPERS
 #define MAVLINK_USE_CONVENIENCE_FUNCTIONS
-
-
-#include "mavlink/v1.0/mavlink_types.h"
-
-
-extern mavlink_system_t mavlink_system;
-
-/**
- * MAVLink convenience function for sending data.
- * See "mavlink_helpers.h" for more info.
- */
-void 
-mavlink_send_uart_bytes(mavlink_channel_t, const uint8_t*, size_t);
+#define MAVLINK_START_UART_SEND mavlink_start_uart_send
+#define MAVLINK_END_UART_SEND mavlink_end_uart_send
 
 #include "mavlink/v1.0/pdvapilot/mavlink.h"
 

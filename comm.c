@@ -7,19 +7,21 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <linux/spi/spidev.h>
 #include <signal.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <syslog.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
 
 #include "comm.h"
 #include "mavlink_bridge.h"
 #include "param.h"
 
-
-//This include provides function definitions.
-#include "mavlink/v1.0/mavlink_helpers.h"
 
 /* *** Macros *** */
 
@@ -28,25 +30,27 @@
 ///< File path of the RADIO_COMM_CHANNEL.
 #endif // not RADIO_STREAM_PATH
 
-#ifndef MAX_MAV_COMPONENTS
-#define MAX_MAV_COMPONENTS 2
-///< Maximum allowed number of MAVLink components.
-#endif // not MAX_MAV_COMPONENTS
+#ifndef SENSOR_HEAD_STREAM_PATH
+#define SENSOR_HEAD_STREAM_PATH "/dev/spidev1.1"
+///< File path of the SENSOR_HEAD_COMM_CHANNEL
+#endif // not SENSOR_HEAD_STREAM_PATH
 
-
-/* *** Types *** */
-
-typedef struct mav_component {
-  int compid;
-  size_t param_count;
-  param_def_t *param_defs;
-} mav_component_t;
+#ifndef SPI_MAX_SPEED_HZ
+#define SPI_MAX_SPEED_HZ 500000
+///< Maximum SPI transfer speed, in Hertz.
+#endif // not SPI_MAX_SPEED_HZ
 
 
 /* *** Internal variables *** */
 
-static FILE *radio; ///< Stream of the RADIO_COMM_CHANNEL channel.
+static int radio; ///< File descriptor of the RADIO_COMM_CHANNEL.
+static int sensor_head; ///< File descriptor of the SENSOR_HEAD_COMM_CHANNEL.
+static size_t sensor_head_send_count = 0; ///< Amount of data in buffer.
 
+/// Buffer for the outgoing data on the SENSOR_HEAD_COMM_CHANNEL
+static uint8_t sensor_head_send_buffer[MAVLINK_MAX_PACKET_LEN];
+
+/*
 static mavlink_message_handler_t msg_handlers[256];
 ///< Array with all registered message handlers, indexed by msgid.
 
@@ -59,6 +63,28 @@ int announce_param_index;
 
 /* *** Prototypes *** */
 
+/// Send data over a MAVLink channel.
+static inline void 
+mavlink_send_uart_bytes(mavlink_channel_t, const uint8_t*, size_t);
+
+/// Send data over the RADIO_COMM_CHANNEL.
+static inline void 
+radio_send_bytes(const uint8_t*, size_t);
+
+/// Send data over the SENSOR_HEAD_COMM_CHANNEL.
+static inline void 
+sensor_head_send_bytes(const uint8_t*, size_t);
+
+/// Start a message send over a MAVLink channel.
+static inline void
+mavlink_start_uart_send(mavlink_channel_t chan, size_t len);
+
+/// End a message send over a MAVLink channel.
+static inline void
+mavlink_end_uart_send(mavlink_channel_t chan, size_t len);
+
+
+/*
 /// Find given parameter definition.
 static param_def_t *
 find_param_def(uint8_t compid, const char *param_id, int *param_index, 
@@ -71,41 +97,14 @@ static void param_request_list_handler(mavlink_message_t *msg);
 static void param_set_handler(mavlink_message_t *msg);
 
 
+/* *** Include MAVLink helper functions *** */
+
+#define MAVLINK_SEND_UART_BYTES mavlink_send_uart_bytes
+#include "mavlink/v1.0/mavlink_helpers.h"
+
+
 /* *** Public functions *** */
 
-void
-mavlink_send_uart_bytes(mavlink_channel_t chan, const uint8_t* buff, 
-			size_t len) {
-  if (chan != RADIO_COMM_CHANNEL)
-    syslog(LOG_ERR, "Unsupported channel #%d for utility function "
-	   "mavlink_send_uart_bytes.", chan, __FILE__, __LINE__);
-  
-  //Block all signals
-  sigset_t set, old_set;
-  sigfillset(&set);
-  sigprocmask(SIG_BLOCK, &set, &old_set);
-
-  //Write data
-  size_t written = fwrite(buff, len, 1, radio);
-
-  //Treat error
-  if (written != len) {
-    switch (errno) {
-    case EAGAIN:
-      syslog(LOG_WARNING, "Message sending failed: write would block.");
-      break;
-    case EINTR:
-      syslog(LOG_WARNING, "Message sending failed: system call interrupted.");
-      break;
-    default:
-      syslog(LOG_ERR, "Message sending failed: %m (%s)%d.", __FILE__, __LINE__);
-      break;      
-    }
-  }
-
-  //Restore blocked signals
-  sigprocmask(SIG_SETMASK, &old_set, NULL);
-}
 /*
 void 
 param_announce() {
@@ -202,36 +201,125 @@ recv_comm() {
   //Clear the end-of-file and error indicators
   clearerr(radio);
 }
+*/
 
 ret_status_t setup_comm() {
-  //Open stream
-  radio = fopen(RADIO_STREAM_PATH, "r+");
-  if (!radio) {
+  //Open radio stream
+  radio = open(RADIO_STREAM_PATH, O_RDWR);
+  if (radio < 0) {
     syslog(LOG_ERR, "Error opening RADIO_COMM_CHANNEL stream at `%s': %m "
 	   "(%s)%d", RADIO_STREAM_PATH, __FILE__, __LINE__);    
     return STATUS_FAILURE;
   }
   
-  //Set stream for nonblocking operation
-  fcntl(fileno(radio), F_SETFL, O_NONBLOCK);
+  //Set radio stream for nonblocking operation
+  fcntl(radio, F_SETFL, O_NONBLOCK);
+
+  //Open sensor head stream
+  sensor_head = open(SENSOR_HEAD_STREAM_PATH, O_RDWR);
+  if (sensor_head < 0) {
+    syslog(LOG_ERR, "Error opening SENSOR_HEAD_COMM_CHANNEL stream at `%s': %m "
+	   "(%s)%d", SENSOR_HEAD_STREAM_PATH, __FILE__, __LINE__);    
+    return STATUS_FAILURE;
+  }
   
-  //Set handler for PARAM_SET message.
-  register_message_handler(MAVLINK_MSG_ID_PARAM_SET, &param_set_handler);
+#ifndef FAKE_SPI
 
-  //Set handler for PARAM_REQUEST_LIST message.
-  register_message_handler(MAVLINK_MSG_ID_PARAM_REQUEST_LIST, 
-			   &param_request_list_handler);
+  //Set SPI port parameters
+  uint8_t mode = SPI_MODE_0;
+  if (ioctl(sensor_head, SPI_IOC_WR_MODE, &mode))
+    syslog(LOG_ERR, "Error setting SPI port mode: %m (%s)%d",
+	   __FILE__, __LINE__);
 
+  uint8_t lsb_first = false;
+  if (ioctl(sensor_head, SPI_IOC_WR_LSB_FIRST, &lsb_first))
+    syslog(LOG_ERR, "Error setting SPI port bit endianness: %m (%s)%d",
+	   __FILE__, __LINE__);
+
+  uint8_t bits_per_word = 8;
+  if (ioctl(sensor_head, SPI_IOC_WR_BITS_PER_WORD, &bits_per_word))
+    syslog(LOG_ERR, "Error setting SPI port bits per word: %m (%s)%d",
+	   __FILE__, __LINE__);
+  
+  uint32_t max_speed_hz = SPI_MAX_SPEED_HZ;
+  if (ioctl(sensor_head, SPI_IOC_WR_MODE, &max_speed_hz))
+    syslog(LOG_ERR, "Error setting SPI port maximum speed: %m (%s)%d",
+	   __FILE__, __LINE__);
+
+#endif // not FAKE_SPI
+  
   return STATUS_SUCCESS;
 }
 
 void teardown_comm() {
   //Close the RADIO_COMM_CHANNEL
-  fclose(radio);
+  close(radio);
+
+  //Close the SENSOR_HEAD_COMM_CHANNEL
+  close(sensor_head);
 }
 
 
 /* *** Internal functions *** */
+
+static inline void
+mavlink_send_uart_bytes(mavlink_channel_t chan, const uint8_t* buff, 
+			size_t len) {
+  switch (chan) {
+  case RADIO_COMM_CHANNEL:
+    radio_send_bytes(buff, len);
+    break;
+  case SENSOR_HEAD_COMM_CHANNEL:
+    sensor_head_send_bytes(buff, len);
+    break;
+  }
+}
+
+static inline void
+radio_send_bytes(const uint8_t* buff, size_t len) {
+  //Write data
+  size_t written = write(radio, buff, len);
+  
+  //Treat error
+  if (written != len) {
+    switch (errno) {
+    case EAGAIN:
+      syslog(LOG_WARNING, "Message sending failed: write would block.");
+      break;
+    case EINTR:
+      syslog(LOG_WARNING, "Message sending failed: system call interrupted.");
+      break;
+    default:
+      syslog(LOG_ERR, "Message sending failed: %m (%s)%d.", __FILE__, __LINE__);
+      break;      
+    }
+  }
+}
+
+static inline void
+sensor_head_send_bytes(const uint8_t* buff, size_t len) {
+  //See if there is space availabe in the buffer
+  if (sensor_head_send_count + len > sizeof(sensor_head_send_buffer))
+    return;
+
+  //Copy data to buffer
+  memcpy(sensor_head_send_buffer + sensor_head_send_count, buff, len);
+}
+
+static inline void
+mavlink_start_uart_send(mavlink_channel_t chan, size_t len) {
+  if (chan == SENSOR_HEAD_COMM_CHANNEL) {
+    sensor_head_send_count = 0;
+  }
+}
+
+static inline void
+mavlink_end_uart_send(mavlink_channel_t chan, size_t len) {
+  if (chan == SENSOR_HEAD_COMM_CHANNEL && len == sensor_head_send_count) {
+    write(sensor_head, sensor_head_send_buffer, len);
+  }
+}
+
 /*
 static param_def_t *
 find_param_def(uint8_t compid, const char *param_id, int *param_index, 

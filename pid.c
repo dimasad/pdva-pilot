@@ -12,30 +12,39 @@
 
 /* *** Public functions *** */
 
-float 
-pid_update(pid_controller_t *pid, float ref, float meas) {
-  syslog(LOG_WARNING, "Manual/automatic mode not yet implemented.");
+void 
+pid_init(pid_controller_t *pid, double min_action, double max_action,
+	 double Kc, double Ti, double Td) {
+  //Set the parameters
+  pid->min_action = min_action;
+  pid->max_action = max_action;
+  pid->Kc = Kc;
+  pid->Ti = Ti;
+  pid->Td = Td;
 
-  //Calculate the error
-  float error = ref - meas;
+  //Initialize the internal state
+  pid->last_error = 0.0;
+  pid->istate = 0.0;
+  pid->mode = PID_AUTOMATIC;
+}
 
-  //Update the derivative action
-  float findiff = meas - pid->meas;
-  pid->daction = pid->daction*pid->df_pole + (1 -pid->df_pole)*pid->kd*findiff;
+double 
+pid_update(pid_controller_t *pid, double ref, double meas, double Ts) {
+  double error = ref - meas;
+
+  //Calculate the proportional action
+  double paction = error * pid->Kc;
   
-  //Store the measurement value
-  pid->meas = meas;
+  //Calculate the derivative action
+  double daction = (error - pid->last_error) * pid->Td * pid->Kc / Ts;
+
+  //Calculate the integral action
+  double iaction = pid->istate + error * 0.5 * Ts * pid->Kc / pid->Ti;
   
-  //Calculate the control action
-  pid->action = pid->kp*error + pid->daction + pid->iaction + pid->ki*error;
+  //Update the internal state
+  pid->last_error = error;
+  pid->istate += error * Ts * pid->Kc / pid->Ti;
   
-  //Perform saturation and anti-windup
-  if (pid->action <= pid->min_action)
-    pid->action = pid->min_action;
-  else if(pid->action >= pid->max_action)
-    pid->action = pid->max_action;
-  else
-    pid->daction += pid->ki * error;
-  
-  return pid->action;
+  //Return and save the control action  
+  return pid->action = paction + iaction + daction;
 }

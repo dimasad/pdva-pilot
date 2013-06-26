@@ -8,7 +8,7 @@
 
 #include <libconfig.h>
 
-//#include "comm.h"
+#include "comm.h"
 //#include "control.h"
 #include "mavlink_bridge.h"
 #include "param.h"
@@ -41,12 +41,6 @@ float dummy1 = 0.1; ///< A dummy parameter for testing.
 uint8_t dummy2 = 4; ///< Another dummy parameter.
 
 param_handler_t param_handler; ///< The runtime parameter handler.
-/*
-param_def_t mav_params[] = {
-  {MAV_PARAM_TYPE_REAL32, "dummy1", &dummy1, NULL},
-  {MAV_PARAM_TYPE_UINT8, "dummy2", &dummy2, NULL},
-  PARAM_DEF_LIST_END //Sentinel
-};
 
 
 /* *** Internal functions *** */
@@ -74,19 +68,18 @@ setup() {
   param_handler_init(&param_handler, 2);
   param_register(&param_handler, MAV_PARAM_TYPE_REAL32, "dummy1", &dummy1,NULL);
   param_register(&param_handler, MAV_PARAM_TYPE_UINT8, "dummy2", &dummy2, NULL);
-    
   
   //Load parameters from file
   if (param_load(&param_handler, PDVA_CONFIG_DIR "/mav_params.cfg"))
     syslog(LOG_WARNING, "Could not load parameters, using default values.");
   
-  /*
   //Setup the communication module
   if (setup_comm()) {
     syslog(LOG_WARNING, "Could not setup the communication module.");
     return STATUS_FAILURE;
   }
-  
+
+  /*  
   //Setup the control module
   if (setup_control()) {
     syslog(LOG_ERR, "Could not setup the control module.");
@@ -107,7 +100,6 @@ teardown() {
   //teardown_control();
   closelog();
 }
-
 
 int
 main(int argc, char* argv[]) {

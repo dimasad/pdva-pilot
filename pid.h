@@ -3,6 +3,11 @@
  * Interface of the PID control library.
  */
 
+/* *** Macros *** */
+
+#define SATURATE(val, min, max) (val <= min: min ? (val >= max: max ? val))
+
+
 /* *** Types *** */
 
 typedef enum {
@@ -12,38 +17,33 @@ typedef enum {
 
 /// A PID controller definition.
 typedef struct pid_controller {
-  float min_action; ///< Lower limit of the control action.
-  float max_action; ///< Upper limit of the control action.
-  float kp; ///< Proportional gain.
-  float ki; ///< Integral gain, kp*Ts/Ti.
-  float kd; ///< Derivative gain, kp*Td/Ts.
-  float df_pole; ///< Pole of the derivative filter in the Z-plane.
-  float meas; ///< Current value of the measurement (process variable).
-  float action; ///< Current control action value (manipulated variable).
-  float iaction; ///< Current integral action.
-  float daction; ///< Current derivative action.
+  double min_action; ///< Lower limit of the control action.
+  double max_action; ///< Upper limit of the control action.
+  double action; ///< Last action value (manipulated variable).
+  double Kc; ///< Proportional gain.
+  double Ti; ///< Integral Time.
+  double Td; ///< Derivative Time.
+  double last_error; ///< Last value of the error.
+  double istate; ///< State of the integral action.
   pid_mode_t mode; ///< Current mode of operation.
 } pid_controller_t;
 
 
 /* *** Functions *** */
 
-float 
-pid_update(pid_controller_t *pid, float ref, float meas);
-
 void 
-pid_init(pid_controller_t *pid, float min_action, float max_action,
-	 float kp, float ti, float td, float df_pole, float period);
+pid_init(pid_controller_t *pid, double min_action, double max_action,
+	 double Kc, double Ti, double Td);
 
-void 
-pid_tune(pid_controller_t *pid, float kp, float ti, float td, float df_pole, 
-	 float period);
+double 
+pid_update(pid_controller_t *pid, double ref, double meas, double Ts);
 
+/*
 /// Go to automatic mode with a bumpless transfer to a given action.
 void 
-pid_set_auto(pid_controller_t *pid, float action);
+pid_set_auto(pid_controller_t *pid, double action);
 
 /// Set PID to manual mode.
 void 
 pid_set_manual(pid_controller_t *pid);
-
+*/

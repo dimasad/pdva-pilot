@@ -22,7 +22,7 @@ include_directories (${libconfig_INCLUDE_DIRS})
 set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99")
 
 # Add the project libraries
-#add_library (comm comm.c)
+add_library (comm comm.c)
 #add_library (control control.c)
 add_library (param param.c)
 add_library (pid pid.c)
@@ -30,7 +30,7 @@ add_library (pid pid.c)
 # Add the project executables
 add_executable (pdva-pilot pdva-pilot.c)
 target_link_libraries (
-  pdva-pilot param pid rt #comm control
+  pdva-pilot comm param pid rt #control
   ${libconfig_LIBRARIES} ${glib2_LIBRARIES})
 
 # Define the installation
