@@ -13,6 +13,10 @@
 
 /* *** Types *** */
 
+enum control_configuration {
+  ALTITUDE_FROM_THROTTLE = 0,
+  ALTITUDE_FROM_ELEVATOR = 1
+};
 
 /* *** Functions *** */
 

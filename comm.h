@@ -41,6 +41,10 @@ void recv_comm();
 void register_mav_component(uint8_t compid, param_def_t *params_def);
 */
 
+/// Get sensor head data from SENSOR_HEAD_COMM_CHANNEL.
+ret_status_t
+read_sensor_head(mavlink_sensor_head_data_t*);
+
 /// Setup the communication module.
 ret_status_t setup_comm();
 

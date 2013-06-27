@@ -7,6 +7,7 @@
 
 #include <fcntl.h>
 #include <linux/spi/spidev.h>
+#include <math.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -15,6 +16,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "comm.h"
+#include "control.h"
 #include "mavlink_bridge.h"
 #include "param.h"
 #include "pid.h"
@@ -22,80 +25,93 @@
 
 /* *** Macros *** */
 
-#ifndef SPI_STREAM_PATH
-#define SPI_STREAM_PATH "/dev/spidev1.1"
-///< File path of the SENSOR_HEAD_COMM_CHANNEL
-#endif // not SPI_STREAM_PATH
-
-#ifndef SPI_MAX_SPEED_HZ
-#define SPI_MAX_SPEED_HZ 500000
-///< Maximum SPI transfer speed, in Hertz.
-#endif // not SPI_MAX_SPEED_HZ
-
 #ifndef CONTROL_TIMER_PERIOD_NS
 #define CONTROL_TIMER_PERIOD_NS 500000000L
 ///< Period of the control loop in nanosecods.
 #endif // not CONTROL_TIMER_PERIOD_NS
 
+#define CONTROL_TIMER_PERIOD_S (CONTROL_TIMER_PERIOD_NS / 1e9)
 
 /* *** Prototypes *** */
 
 static void alarm_handler(int signum, siginfo_t *info, void *context);
 static inline void calculate_control();
-static inline ret_status_t read_sensor_head();
-static inline ret_status_t write_control();
 
 
 /* *** Internal variables *** */
 
 /// Latest sensor data.
-static mavlink_sensor_head_data_t sensor_data; 
+static mavlink_sensor_head_data_t sensor_head_data; 
 
-/// The current control action.
-static mavlink_servo_output_raw_t output; 
-
-/// File descriptor of spi port stream.
-static int spi;
-
-/// Control loop timer.
+/// Control loop timer object.
 static timer_t timer;
+
+/// Aileron PID controller.
+static pid_controller_t aileron_pid;
+
+/// Elevator PID controller.
+static pid_controller_t elevator_pid;
+
+/// Throttle PID controller.
+static pid_controller_t throttle_pid;
+
+/// Rudder PID controller.
+static pid_controller_t rudder_pid;
+
+/// Desired roll angle PID controller.
+static pid_controller_t roll_pid;
+
+/// Desired pitch angle PID controller.
+static pid_controller_t pitch_pid;
+
+/// Aileron feedforward gain.
+static double aileron_ff = 0;
+
+/// Elevator feedforward gain.
+static double elevator_ff = 0;
+
+/// Throttle feedforward gain.
+static double throttle_ff = 0;
+
+/// Rudder feedforward gain.
+static double rudder_ff = 0;
+
+/// Multiloop control configuration.
+uint8_t control_configuration = ALTITUDE_FROM_THROTTLE;
+
+/// Yaw angle reference.
+static double yaw_ref = 0;
+
+/// Altitude reference.
+static double altitude_ref = 0;
+
+/// Airspeed reference.
+static double airspeed_ref = 0;
+
+/// Aileron output (range 0.0 to 1.0)
+static double aileron_out = 0;
+
+/// Elevator output (range 0.0 to 1.0)
+static double elevator_out = 0;
+
+/// Throttle output (range 0.0 to 1.0)
+static double throttle_out = 0;
+
+/// Rudder output (range 0.0 to 1.0)
+static double rudder_out = 0;
 
 
 /* *** Public functions *** */
 
 ret_status_t 
 setup_control() {
-  //Open SPI port
-  spi = open(SPI_STREAM_PATH, O_RDWR);
-  if (spi < 0) {
-    syslog(LOG_CRIT, "Error opening SPI stream at `%s': %m (%s)%d",
-	   SPI_STREAM_PATH, __FILE__, __LINE__);
-  }
-  
-#ifndef FAKE_SPI
-
-  //Set SPI port parameters
-  uint8_t mode = SPI_MODE_0;
-  if (ioctl(spi, SPI_IOC_WR_MODE, &mode))
-    syslog(LOG_ERR, "Error setting SPI port mode: %m (%s)%d",
-	   __FILE__, __LINE__);
-
-  uint8_t lsb_first = false;
-  if (ioctl(spi, SPI_IOC_WR_LSB_FIRST, &lsb_first))
-    syslog(LOG_ERR, "Error setting SPI port bit endianness: %m (%s)%d",
-	   __FILE__, __LINE__);
-
-  uint8_t bits_per_word = 8;
-  if (ioctl(spi, SPI_IOC_WR_BITS_PER_WORD, &bits_per_word))
-    syslog(LOG_ERR, "Error setting SPI port bits per word: %m (%s)%d",
-	   __FILE__, __LINE__);
-  
-  uint32_t max_speed_hz = SPI_MAX_SPEED_HZ;
-  if (ioctl(spi, SPI_IOC_WR_MODE, &max_speed_hz))
-    syslog(LOG_ERR, "Error setting SPI port maximum speed: %m (%s)%d",
-	   __FILE__, __LINE__);
-
-#endif // not FAKE_SPI
+  //Initialize the pid controllers
+  pid_init(&aileron_pid, 0, 1, 1, INFINITY, 0);
+  pid_init(&elevator_pid, 0, 1, 1, INFINITY, 0);
+  pid_init(&throttle_pid, 0, 1, 1, INFINITY, 0);
+  pid_init(&rudder_pid, 0, 1, 1, INFINITY, 0);
+  pid_init(&roll_pid, -M_PI_2, M_PI_2, 1, INFINITY, 0);
+  pid_init(&pitch_pid, -M_PI_2, M_PI_2, 1, INFINITY, 0);
   
   //Setup the interrupt handler
   struct sigaction alarm_action;
@@ -103,15 +119,14 @@ setup_control() {
   alarm_action.sa_flags = SA_RESTART;
   sigfillset(&alarm_action.sa_mask);
   sigaction(SIGALRM, &alarm_action, NULL);
-    
-
+  
   //Create timer
   if (timer_create(CLOCK_REALTIME, NULL, &timer)) {
     syslog(LOG_ERR, "Error creating control loop timer: %m (%s)%d",
 	   __FILE__, __LINE__);
     return STATUS_FAILURE;
   }
-
+  
   return STATUS_SUCCESS;
 }
 
@@ -134,7 +149,7 @@ start_control() {
 
 void 
 teardown_control() {
-  close(spi);
+  timer_delete(timer);
 }
 
 
@@ -146,89 +161,28 @@ alarm_handler(int signum, siginfo_t *info, void *context) {
     return;
 
   //Get readings from sensor head
-  if (read_sensor_head()) {
+  if (read_sensor_head(&sensor_head_data)) {
     //How to proceed when failed to obtain sensor head measurements?
   }
   
   //Calculate the control action
   calculate_control();
 
-  //Write control action to the SPI port
-  if (write_control()) {
-    //How to proceed when failed send control action?
-  }  
+  //Write control action to the sensor head
+  mavlink_msg_servo_output_raw_send(SENSOR_HEAD_COMM_CHANNEL, 0, 0,
+				    aileron_pid.action*65535,
+				    elevator_pid.action*65535,
+				    throttle_pid.action*65535,
+				    rudder_pid.action*65535, 0, 0, 0, 0);
 }
 
 static inline void 
 calculate_control() {
-}
-
-static inline ret_status_t
-read_sensor_head() {
-  //Read data from spi
-  uint8_t buf[MAVLINK_MSG_ID_SENSOR_HEAD_DATA_LEN];
-  ssize_t len = read(spi, &buf, sizeof buf);
-
-  //Check if read successful
-  if (len < 0) {
-    syslog(LOG_DEBUG, "Error reading from sensor head: %m (%s)%d",
-	   __FILE__, __LINE__);
-    return STATUS_FAILURE;
+  if (control_configuration == ALTITUDE_FROM_THROTTLE) {
+    double roll_ref = pid_update(&roll_pid, yaw_ref,
+				 sensor_head_data.att_est[2], 
+				 CONTROL_TIMER_PERIOD_S);    
+  } else {
+    
   }
-
-  if (len < sizeof buf) {
-    syslog(LOG_DEBUG, "Packet from sensor head too small (%s)%d",
-	   __FILE__, __LINE__);
-    return STATUS_FAILURE;
-  }
-  
-  //Decode message
-  mavlink_message_t msg;
-  mavlink_status_t status;
-  
-  //Read from stream until it would block or an error occurs
-  for (int i = 0; i < sizeof buf; i++)
-    mavlink_parse_char(SENSOR_HEAD_COMM_CHANNEL, buf[i], &msg, &status);
-  
-  if (!status.msg_received) {
-    syslog(LOG_DEBUG, "Could not decode message from sensor head (%s)%d",
-	   __FILE__, __LINE__);
-    return STATUS_FAILURE;
-  }
-  
-  //Retrieve the message payload
-  mavlink_msg_sensor_head_data_decode(&msg, &sensor_data);
-  
-  return STATUS_SUCCESS;
-}
-
-static inline ret_status_t write_control() {
-  //Encode the MAVLink message
-  mavlink_message_t msg;    
-  mavlink_msg_servo_output_raw_encode_chan(pdva_config.sysid,
-					   mavlink_system.compid,
-					   SENSOR_HEAD_COMM_CHANNEL, &msg,
-					   &output);
-  
-  //Write to buffer
-  uint8_t buf[MAVLINK_MSG_ID_SERVO_OUTPUT_RAW_LEN];
-  size_t len = mavlink_msg_to_send_buffer(buf, &msg);
-  
-  //Write buffer to SPI port
-  ssize_t written = write(spi, buf, len);
-
-  //Check for error during send
-  if (written < 0) {
-    syslog(LOG_ERR, "Error writing on SPI port: %m (%s)%d", __FILE__, __LINE__);
-    return STATUS_FAILURE;
-  }
-  
-  //Check if the message was completely written
-  if (written < len) {
-    syslog(LOG_ERR, "Could not write full message to SPI port (%s)%d", 
-	   __FILE__, __LINE__);
-    return STATUS_FAILURE;
-  }
-
-  return STATUS_SUCCESS;
 }

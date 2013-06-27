@@ -203,6 +203,46 @@ recv_comm() {
 }
 */
 
+ret_status_t
+read_sensor_head(mavlink_sensor_head_data_t *payload) {
+  //Read data from SENSOR_HEAD_COMM_CHANNEL
+  uint8_t buf[MAVLINK_MSG_ID_SENSOR_HEAD_DATA_LEN 
+	      + MAVLINK_NUM_NON_PAYLOAD_BYTES];
+  mavlink_reset_channel_status(SENSOR_HEAD_COMM_CHANNEL);
+  ssize_t len = read(sensor_head, &buf, sizeof buf);
+  
+  //Check if read successful
+  if (len < 0) {
+    syslog(LOG_DEBUG, "Error reading from sensor head: %m (%s)%d",
+	   __FILE__, __LINE__);
+    return STATUS_FAILURE;
+  }
+
+  if (len < sizeof buf) {
+    syslog(LOG_DEBUG, "Packet from sensor head too small (%s)%d",
+	   __FILE__, __LINE__);
+    return STATUS_FAILURE;
+  }
+  
+  //Decode message
+  mavlink_message_t msg;
+  mavlink_status_t status;
+  
+  //Parse the data
+  for (int i = 0; i < sizeof buf; i++)
+    mavlink_parse_char(SENSOR_HEAD_COMM_CHANNEL, buf[i], &msg, &status);
+  
+  if (!status.msg_received) {
+    syslog(LOG_DEBUG, "Could not decode message from sensor head (%s)%d",
+	   __FILE__, __LINE__);
+    return STATUS_FAILURE;
+  }
+  
+  //Retrieve the message payload and return
+  mavlink_msg_sensor_head_data_decode(&msg, payload);
+  return STATUS_SUCCESS;
+}
+
 ret_status_t setup_comm() {
   //Open radio stream
   radio = open(RADIO_STREAM_PATH, O_RDWR);
@@ -316,7 +356,7 @@ mavlink_start_uart_send(mavlink_channel_t chan, size_t len) {
 static inline void
 mavlink_end_uart_send(mavlink_channel_t chan, size_t len) {
   if (chan == SENSOR_HEAD_COMM_CHANNEL && len == sensor_head_send_count) {
-    write(sensor_head, sensor_head_send_buffer, len);
+    ssize_t written = write(sensor_head, sensor_head_send_buffer, len);
   }
 }
 

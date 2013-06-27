@@ -23,14 +23,14 @@ set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99")
 
 # Add the project libraries
 add_library (comm comm.c)
-#add_library (control control.c)
+add_library (control control.c)
 add_library (param param.c)
 add_library (pid pid.c)
 
 # Add the project executables
 add_executable (pdva-pilot pdva-pilot.c)
 target_link_libraries (
-  pdva-pilot comm param pid rt #control
+  pdva-pilot comm control param pid rt
   ${libconfig_LIBRARIES} ${glib2_LIBRARIES})
 
 # Define the installation
@@ -44,7 +44,7 @@ if (gtest_FOUND)
   # Add each individual test
   add_executable (test_param tests/test_param.cpp)
   target_link_libraries (
-    test_param param pthread
+    test_param param
     ${libconfig_LIBRARIES} ${glib2_LIBRARIES} ${gtest_LIBRARIES})
   
 endif (gtest_FOUND)

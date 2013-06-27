@@ -25,7 +25,6 @@ pid_init(pid_controller_t *pid, double min_action, double max_action,
   //Initialize the internal state
   pid->last_error = 0.0;
   pid->istate = 0.0;
-  pid->mode = PID_AUTOMATIC;
 }
 
 double 
@@ -44,7 +43,9 @@ pid_update(pid_controller_t *pid, double ref, double meas, double Ts) {
   //Update the internal state
   pid->last_error = error;
   pid->istate += error * Ts * pid->Kc / pid->Ti;
+  pid->istate = SATURATE(pid->istate, pid->min_action, pid->max_action);
   
   //Return and save the control action  
-  return pid->action = paction + iaction + daction;
+  return pid->action = SATURATE(paction + iaction + daction,
+				pid->min_action, pid->max_action);
 }

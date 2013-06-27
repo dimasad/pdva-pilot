@@ -8,6 +8,7 @@
 include(LibFindMacros)
 
 # Dependencies
+set(CMAKE_THREAD_PREFER_PTHREAD)
 libfind_package(gtest Threads)
 
 # Include dir for gtest/gtest.h
@@ -28,5 +29,5 @@ set(
 
 set(
   gtest_PROCESS_LIBS 
-  gtest_LIBRARY gtest_main_LIBRARY ${CMAKE_THREAD_LIBS_INIT})
+  gtest_LIBRARY gtest_main_LIBRARY CMAKE_THREAD_LIBS_INIT)
 libfind_process(gtest)

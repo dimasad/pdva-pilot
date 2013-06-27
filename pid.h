@@ -5,7 +5,7 @@
 
 /* *** Macros *** */
 
-#define SATURATE(val, min, max) (val <= min: min ? (val >= max: max ? val))
+#define SATURATE(val, min, max) (val <= min ? min : (val >= max ? max : val))
 
 
 /* *** Types *** */
@@ -25,7 +25,6 @@ typedef struct pid_controller {
   double Td; ///< Derivative Time.
   double last_error; ///< Last value of the error.
   double istate; ///< State of the integral action.
-  pid_mode_t mode; ///< Current mode of operation.
 } pid_controller_t;
 
 
