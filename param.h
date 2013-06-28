@@ -16,6 +16,9 @@
 #include "mavlink_bridge.h"
 #include "pdva-pilot.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif //__cplusplus
 
 /* *** Macros *** */
 /// Maximum length of parameter id string
@@ -110,5 +113,9 @@ pdva_config_init(pdva_pilot_config_t *pdva_config);
 /// Load pdva-pilot configuration from file.
 ret_status_t
 pdva_config_load(pdva_pilot_config_t *pdva_config, const char *file);
+
+#ifdef __cplusplus
+}
+#endif //__cplusplus
 
 #endif // not PDVA__PARAM_H
