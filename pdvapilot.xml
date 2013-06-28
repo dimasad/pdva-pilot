@@ -19,8 +19,21 @@
                <field type="int32_t" name="lon_gps">GPS longitude, expressed as * 1e7</field>
                <field type="int32_t" name="alt_gps">GPS altitude above MSL (millimeters)</field>
                <field type="int16_t" name="hdg_gps">GPS heading (milliradians)</field>
-               <field type="int16_t[3]" name="vel_gps">GPS groundspeed (north, east, down * 0.01 m/s)</field>
+               <field type="int16_t[3]" name="vel_gps">GPS groundspeed (north, east, down in cm/s)</field>
                <field type="int16_t[3]" name="att_est">Estimated attitude angles (roll, pitch, yaw in milliradians)</field>
+	       <field type="uint32_t" name="airspeed">Airspeed (cm/s)</field>
+	       <field type="int32_t" name="altitude">Altitude above sea level (cm)</field>
+          </message>
+          <message id="151" name="SENSOR_HEAD_COMMAND">
+               <description>Control action command to the sensor head.</description>
+               <field type="uint16_t" name="chan1">Channel 1 command, 0 to 65535</field>
+               <field type="uint16_t" name="chan2">Channel 2 command, 0 to 65535</field>
+               <field type="uint16_t" name="chan3">Channel 3 command, 0 to 65535</field>
+               <field type="uint16_t" name="chan4">Channel 4 command, 0 to 65535</field>
+               <field type="uint16_t" name="chan5">Channel 5 command, 0 to 65535</field>
+               <field type="uint16_t" name="chan6">Channel 6 command, 0 to 65535</field>
+               <field type="uint16_t" name="chan7">Channel 7 command, 0 to 65535</field>
+               <field type="uint16_t" name="chan8">Channel 8 command, 0 to 65535</field>
           </message>
      </messages>
 </mavlink>

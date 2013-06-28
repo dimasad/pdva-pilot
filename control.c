@@ -77,28 +77,41 @@ static double throttle_ff = 0;
 static double rudder_ff = 0;
 
 /// Multiloop control configuration.
-uint8_t control_configuration = ALTITUDE_FROM_THROTTLE;
+uint8_t control_configuration = ALTITUDE_FROM_POWER;
 
-/// Yaw angle reference.
+/// Roll angle reference (setpoint).
+static double roll_ref = 0;
+
+/// Pitch angle reference (setpoint).
+static double pitch_ref = 0;
+
+/// Yaw angle reference (setpoint).
 static double yaw_ref = 0;
 
-/// Altitude reference.
+/// Altitude reference (setpoint).
 static double altitude_ref = 0;
 
-/// Airspeed reference.
+/// Airspeed reference (setpoint).
 static double airspeed_ref = 0;
 
-/// Aileron output (range 0.0 to 1.0)
+/// Aileron output
 static double aileron_out = 0;
 
-/// Elevator output (range 0.0 to 1.0)
+/// Elevator output
 static double elevator_out = 0;
 
-/// Throttle output (range 0.0 to 1.0)
+/// Throttle output
 static double throttle_out = 0;
 
-/// Rudder output (range 0.0 to 1.0)
+/// Rudder output
 static double rudder_out = 0;
+
+/// Altitude in meters above mean sea level
+static double altitude = 0;
+
+/// Airspeed in m/s.
+static double airspeed = 0;
+
 
 
 /* *** Public functions *** */
@@ -167,22 +180,53 @@ alarm_handler(int signum, siginfo_t *info, void *context) {
   
   //Calculate the control action
   calculate_control();
-
+  
   //Write control action to the sensor head
-  mavlink_msg_servo_output_raw_send(SENSOR_HEAD_COMM_CHANNEL, 0, 0,
-				    aileron_pid.action*65535,
-				    elevator_pid.action*65535,
-				    throttle_pid.action*65535,
-				    rudder_pid.action*65535, 0, 0, 0, 0);
+  mavlink_msg_sensor_head_command_send(SENSOR_HEAD_COMM_CHANNEL,
+				       aileron_out*65535,
+				       elevator_out*65535,
+				       throttle_out*65535,
+				       rudder_out*65535, 0, 0, 0, 0);
 }
 
 static inline void 
 calculate_control() {
-  if (control_configuration == ALTITUDE_FROM_THROTTLE) {
-    double roll_ref = pid_update(&roll_pid, yaw_ref,
-				 sensor_head_data.att_est[2], 
-				 CONTROL_TIMER_PERIOD_S);    
-  } else {
+  switch (control_configuration) {
+  case ALTITUDE_FROM_POWER:
+    throttle_out = pid_update(&throttle_pid, altitude_ref,
+			      sensor_head_data.altitude * 0.01,
+			      CONTROL_TIMER_PERIOD_S);
     
+    pitch_ref = pid_update(&pitch_pid, airspeed_ref,
+			   sensor_head_data.airspeed * 0.01,
+			   CONTROL_TIMER_PERIOD_S);
+    break;
+  case ALTITUDE_FROM_PITCH:
+    pitch_ref = pid_update(&pitch_pid, altitude_ref,
+			   sensor_head_data.altitude * 0.01,
+			   CONTROL_TIMER_PERIOD_S);
+    
+    throttle_out = pid_update(&throttle_pid, airspeed_ref,
+			      sensor_head_data.airspeed * 0.01,
+			      CONTROL_TIMER_PERIOD_S);
+    break;
   }
+
+  roll_ref = pid_update(&roll_pid, yaw_ref,
+			sensor_head_data.att_est[2] * 0.001,
+			CONTROL_TIMER_PERIOD_S);
+    
+  aileron_out = pid_update(&aileron_pid, roll_ref,
+			   sensor_head_data.att_est[0] * 0.001,
+			   CONTROL_TIMER_PERIOD_S);
+  
+  elevator_out = pid_update(&elevator_pid, pitch_ref,
+			    sensor_head_data.att_est[1] * 0.001,
+			    CONTROL_TIMER_PERIOD_S);
+  elevator_out += fabs(roll_ref) * elevator_ff;
+  
+  rudder_out = pid_update(&rudder_pid, 0,
+			  sensor_head_data.acc[1],
+			  CONTROL_TIMER_PERIOD_S);
+  rudder_out += aileron_out * rudder_ff;
 }
