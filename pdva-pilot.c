@@ -66,8 +66,10 @@ setup() {
   
   //Setup parameter handler and register parameters
   param_handler_init(&param_handler, 2);
-  param_register(&param_handler, MAV_PARAM_TYPE_REAL32, "dummy1", &dummy1,NULL);
-  param_register(&param_handler, MAV_PARAM_TYPE_UINT8, "dummy2", &dummy2, NULL);
+  param_register(&param_handler, MAV_PARAM_TYPE_REAL32, 
+                 "dummy1", &dummy1, NULL, NULL);
+  param_register(&param_handler, MAV_PARAM_TYPE_UINT8, 
+                 "dummy2", &dummy2, NULL, NULL);
   
   //Load parameters from file
   if (param_load(&param_handler, PDVA_CONFIG_DIR "/mav_params.cfg"))
@@ -102,7 +104,10 @@ main(int argc, char* argv[]) {
     syslog(LOG_CRIT, "Failure in pdva-pilot setup, aborting.");
     return EXIT_FAILURE;
   }
-
+  
   teardown();
   return EXIT_SUCCESS;
 }
+
+  
+

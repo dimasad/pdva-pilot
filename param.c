@@ -18,62 +18,38 @@
 
 /* *** Prototypes *** */
 
+/// Default parameter getter callback.
+static param_value_union_t
+default_param_getter(enum MAV_PARAM_TYPE type, const char *id, void *data);
+
 /// Default parameter setter callback.
-ret_status_t
-default_param_setter(enum MAV_PARAM_TYPE type, const char* id,
-		     void* location, param_value_union_t new_value);
+static ret_status_t
+default_param_setter(enum MAV_PARAM_TYPE type, const char *id,
+		     void *data, param_value_union_t new_value);
 
 
 /* *** Public functions *** */
 
 param_value_union_t
-param_get(param_def_t *param_def) {
-  param_value_union_t ret;
-  switch (param_def->type) {
-  case MAV_PARAM_TYPE_UINT8:
-    ret.param_uint8 = *(uint8_t*)param_def->location;
-    break;
-  case MAV_PARAM_TYPE_UINT16:
-    ret.param_uint16 = *(uint16_t*)param_def->location;
-    break;
-  case MAV_PARAM_TYPE_UINT32:
-    ret.param_uint32 = *(uint32_t*)param_def->location;
-    break;
-  case MAV_PARAM_TYPE_INT8:
-    ret.param_int8 = *(int8_t*)param_def->location;
-    break;
-  case MAV_PARAM_TYPE_INT16:
-    ret.param_int16 = *(int16_t*)param_def->location;
-    break;
-  case MAV_PARAM_TYPE_INT32:
-    ret.param_int32 = *(int32_t*)param_def->location;
-    break;
-  case MAV_PARAM_TYPE_REAL32:
-    ret.param_float = *(float*)param_def->location;
-    break;
-    
-  default:
-    ret.param_float = NAN;
-    syslog(LOG_ERR, "Unsupported parameter type %d (%s)%d.",
-	   param_def->type, __FILE__, __LINE__);
-  }
+param_get(param_t *param) {
+  param_getter_t callback = (param->getter ? 
+                             param->getter : &default_param_getter);
   
-  return ret;
+  return callback(param->type, param->id, param->data);
 }
 
 ret_status_t
-param_set(param_def_t* param_def, param_value_union_t new_value) {
-  param_setter_t callback = (param_def->setter ? 
-			     param_def->setter : &default_param_setter);
+param_set(param_t* param, param_value_union_t new_value) {
+  param_setter_t callback = (param->setter ? 
+			     param->setter : &default_param_setter);
   
-  return callback(param_def->type, param_def->id, 
-		  param_def->location, new_value);
+  return callback(param->type, param->id, param->data, new_value);
 }
 
 void
 param_handler_init(param_handler_t *handler, size_t reserved_size) {
   handler->id_tbl = g_hash_table_new(g_str_hash, g_str_equal);
-  handler->param_array = g_array_sized_new(false, false, sizeof(param_def_t), 
+  handler->param_array = g_array_sized_new(false, false, sizeof(param_t), 
                                            reserved_size);
 }
 
@@ -85,21 +61,23 @@ param_handler_destroy(param_handler_t *handler) {
 
 void
 param_register(param_handler_t *handler, enum MAV_PARAM_TYPE type,
-               const char *id, void *location, param_setter_t setter) {
+               const char *id, void *data,
+               param_getter_t getter, param_setter_t setter) {
   //Initialize the new definition structure
-  param_def_t def = {
+  param_t param = {
     .type = type,
-    .location = location,
+    .data = data,
+    .getter = getter,
     .setter = setter,
     .id = {0},
   };
-  strncpy(def.id, id, MAX_LENGTH_PARAM_ID);
+  strncpy(param.id, id, MAX_LENGTH_PARAM_ID);
 
   //Get the array index of the new definition
   unsigned index = handler->param_array->len;
-
+  
   //Insert the definition in the array
-  g_array_append_val(handler->param_array, def);
+  g_array_append_val(handler->param_array, param);
   
   //Insert the id in the hash table
   g_hash_table_insert(handler->id_tbl, (gpointer)id, GINT_TO_POINTER(index));
@@ -123,52 +101,51 @@ param_load(param_handler_t *handler, const char *file) {
   for (int i = 0; i < handler->param_array->len; i++) {
     long long llvalue;
     double dvalue;
-    param_def_t *param_def = &g_array_index(handler->param_array, 
-                                            param_def_t, i);
+    param_t *param = &g_array_index(handler->param_array, param_t, i);
     
     //Lookup the value
-    switch (param_def->type) {
+    switch (param->type) {
     case MAV_PARAM_TYPE_UINT8:
     case MAV_PARAM_TYPE_UINT16:
     case MAV_PARAM_TYPE_UINT32:
     case MAV_PARAM_TYPE_INT8:
     case MAV_PARAM_TYPE_INT16:
     case MAV_PARAM_TYPE_INT32:
-      if (!config_lookup_int64(&config, param_def->id, &llvalue))
+      if (!config_lookup_int64(&config, param->id, &llvalue))
 	continue;
       break;
     case MAV_PARAM_TYPE_REAL32:
-      if (!config_lookup_float(&config, param_def->id, &dvalue))
+      if (!config_lookup_float(&config, param->id, &dvalue))
 	continue;
       break;
     default:
       syslog(LOG_ERR, "Unsupported parameter type %d (%s)%d.",
-	     param_def->type, __FILE__, __LINE__);
+	     param->type, __FILE__, __LINE__);
       continue;
     }
     
     //Set the parameter value
-    switch (param_def->type) {
+    switch (param->type) {
     case MAV_PARAM_TYPE_UINT8:
-      *(uint8_t*)param_def->location = llvalue;
+      param_set(param, (param_value_union_t){.param_uint8 = llvalue});
       break;
     case MAV_PARAM_TYPE_UINT16:
-      *(uint16_t*)param_def->location = llvalue;
+      param_set(param, (param_value_union_t){.param_uint16 = llvalue});
       break;
     case MAV_PARAM_TYPE_UINT32:
-      *(uint32_t*)param_def->location = llvalue;
+      param_set(param, (param_value_union_t){.param_uint32 = llvalue});
       break;
     case MAV_PARAM_TYPE_INT8:
-      *(int8_t*)param_def->location = llvalue;
+      param_set(param, (param_value_union_t){.param_int8 = llvalue});
       break;
     case MAV_PARAM_TYPE_INT16:
-      *(int16_t*)param_def->location = llvalue;
+      param_set(param, (param_value_union_t){.param_int16 = llvalue});
       break;
     case MAV_PARAM_TYPE_INT32:
-      *(int32_t*)param_def->location = llvalue;
+      param_set(param, (param_value_union_t){.param_int32 = llvalue});
       break;
     case MAV_PARAM_TYPE_REAL32:
-      *(float*)param_def->location = dvalue;
+      param_set(param, (param_value_union_t){.param_float = dvalue});
       break;
     }
   }
@@ -186,7 +163,7 @@ param_save(param_handler_t *handler, const char *file) {
   //Create configuration file object
   config_t config;
   config_init(&config);
-
+  
   //Read configuration file
   if (!config_read_file(&config, file)) {
     syslog(LOG_ERR, "Error reading parameters file `%s' %s (%s)%d.",
@@ -201,53 +178,52 @@ param_save(param_handler_t *handler, const char *file) {
   for (int i = 0; i < handler->param_array->len; i++) {
     long long llvalue;
     double dvalue;
-    param_def_t *param_def = &g_array_index(handler->param_array, 
-                                            param_def_t, i);
+    param_t *param = &g_array_index(handler->param_array, param_t, i);
     
     //Get the parameter value
-    switch (param_def->type) {
+    switch (param->type) {
     case MAV_PARAM_TYPE_UINT8:
-      llvalue = *(uint8_t*)param_def->location;
+      llvalue = param_get(param).param_uint8;
       break;
     case MAV_PARAM_TYPE_UINT16:
-      llvalue = *(uint16_t*)param_def->location;
+      llvalue = param_get(param).param_uint16;
       break;
     case MAV_PARAM_TYPE_UINT32:
-      llvalue = *(uint32_t*)param_def->location;
+      llvalue = param_get(param).param_uint32;
       break;
     case MAV_PARAM_TYPE_INT8:
-      llvalue = *(int8_t*)param_def->location;
+      llvalue = param_get(param).param_int8;
       break;
     case MAV_PARAM_TYPE_INT16:
-      llvalue = *(int16_t*)param_def->location;
+      llvalue = param_get(param).param_int16;
       break;
     case MAV_PARAM_TYPE_INT32:
-      llvalue = *(int32_t*)param_def->location;
+      llvalue = param_get(param).param_int32;
       break;
     case MAV_PARAM_TYPE_REAL32:
-      dvalue = *(float*)param_def->location;
+      dvalue = param_get(param).param_float;
       break;
       
     default:
-      syslog(LOG_ERR, "Unsupported parameter type %d (%s)%d.",
-	     param_def->type, __FILE__, __LINE__);
+      syslog(LOG_ERR, "Unsupported parameter type %d (%s)%d.", param->type, 
+             __FILE__, __LINE__);
       continue;
     }
     
     //Add to the configuration tree
     config_setting_t *setting;
-    switch (param_def->type) {
+    switch (param->type) {
     case MAV_PARAM_TYPE_UINT8:
     case MAV_PARAM_TYPE_UINT16:
     case MAV_PARAM_TYPE_UINT32:
     case MAV_PARAM_TYPE_INT8:
     case MAV_PARAM_TYPE_INT16:
     case MAV_PARAM_TYPE_INT32:
-      setting = config_setting_add(root, param_def->id, CONFIG_TYPE_INT64);
+      setting = config_setting_add(root, param->id, CONFIG_TYPE_INT64);
       config_setting_set_int64(setting, llvalue);
       break;
     case MAV_PARAM_TYPE_REAL32:
-      setting = config_setting_add(root, param_def->id, CONFIG_TYPE_FLOAT);
+      setting = config_setting_add(root, param->id, CONFIG_TYPE_FLOAT);
       config_setting_set_float(setting, dvalue);
       break;
     }
@@ -306,7 +282,32 @@ pdva_config_load(pdva_pilot_config_t *pdva_config, const char *file) {
 
 /* *** Internal functions *** */
 
-ret_status_t
+static param_value_union_t
+default_param_getter(enum MAV_PARAM_TYPE type, const char *id, void *data) {
+  switch (type) {
+  case MAV_PARAM_TYPE_UINT8:
+    return (param_value_union_t){.param_uint8 = *(uint8_t*)data};
+  case MAV_PARAM_TYPE_UINT16:
+    return (param_value_union_t){.param_uint16 = *(uint16_t*)data};
+  case MAV_PARAM_TYPE_UINT32:
+    return (param_value_union_t){.param_uint32 = *(uint32_t*)data};
+  case MAV_PARAM_TYPE_INT8:
+    return (param_value_union_t){.param_int8 = *(int8_t*)data};
+  case MAV_PARAM_TYPE_INT16:
+    return (param_value_union_t){.param_int16 = *(int16_t*)data};
+  case MAV_PARAM_TYPE_INT32:
+    return (param_value_union_t){.param_int32 = *(int32_t*)data};
+  case MAV_PARAM_TYPE_REAL32:
+    return (param_value_union_t){.param_float = *(float*)data};
+    
+  default:
+    syslog(LOG_ERR, "Unsupported parameter type %d (%s)%d.", type,
+           __FILE__, __LINE__);
+    return (param_value_union_t){.param_float = NAN};
+  }
+}
+
+static ret_status_t
 default_param_setter(enum MAV_PARAM_TYPE type, const char* id, 
 		     void* location, param_value_union_t new_value) {
   switch (type) {

@@ -1,3 +1,8 @@
+
+/** @file
+ * Unit tests of the parameter configuration infrastructure.
+ */
+
 #include "gtest/gtest.h"
 
 TEST(Trivial, Success) {

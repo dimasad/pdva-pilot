@@ -43,16 +43,22 @@ typedef union {
 
 /// Parameter set callback, should return STATUS_SUCCESS if successfully set.
 typedef ret_status_t (*param_setter_t)(enum MAV_PARAM_TYPE type,
-				       const char* id, void* location,
+				       const char *id, void *data,
 				       param_value_union_t new_value);
+
+/// Parameter get callback.
+typedef param_value_union_t (*param_getter_t)(enum MAV_PARAM_TYPE type,
+                                              const char *id, void *data);
+
 
 /// Definition of a runtime parameter.
 typedef struct {
   enum MAV_PARAM_TYPE type;
   char id[MAX_LENGTH_PARAM_ID + 1];
-  void *location;
+  void *data;
+  param_getter_t getter;
   param_setter_t setter;
-} param_def_t;
+} param_t;
 
 /// The parameter handler object
 typedef struct {
@@ -65,11 +71,11 @@ typedef struct {
 
 /// Get current value of a given parameter
 param_value_union_t
-param_get(param_def_t *param_def);
+param_get(param_t *param);
 
 /// Set the parameter value
 ret_status_t
-param_set(param_def_t* param_def, param_value_union_t new_value);
+param_set(param_t *param, param_value_union_t new_value);
 
 /// Initialize the param_handler_t object.
 void
@@ -82,7 +88,8 @@ param_handler_destroy(param_handler_t *handler);
 /// Register a parameter definition with the handler
 void
 param_register(param_handler_t *handler, enum MAV_PARAM_TYPE type,
-	       const char *id, void *location, param_setter_t setter);
+	       const char *id, void *data, param_getter_t getter, 
+               param_setter_t setter);
 
 /// Load runtime parameters from given file.
 ret_status_t
