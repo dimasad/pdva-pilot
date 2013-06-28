@@ -6,6 +6,7 @@
 /* *** Includes *** */
 
 #include <math.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
@@ -70,41 +71,38 @@ param_set(param_def_t* param_def, param_value_union_t new_value) {
 }
 
 void
-param_handler_init(param_handler_t *handler, size_t max_param_count) {
-  handler->param_count = 0;
-  handler->max_param_count = max_param_count;
-  handler->param_def = malloc(max_param_count * sizeof(param_def_t));
-  handler->id_map = g_hash_table_new(g_str_hash, g_str_equal);
+param_handler_init(param_handler_t *handler, size_t reserved_size) {
+  handler->id_tbl = g_hash_table_new(g_str_hash, g_str_equal);
+  handler->param_array = g_array_sized_new(false, false, sizeof(param_def_t), 
+                                           reserved_size);
 }
 
 void
 param_handler_destroy(param_handler_t *handler) {
-  g_hash_table_destroy(handler->id_map);
-  free(handler->param_def);
+  g_hash_table_destroy(handler->id_tbl);
+  g_array_free(handler->param_array, TRUE);
 }
 
 void
 param_register(param_handler_t *handler, enum MAV_PARAM_TYPE type,
-	       const char *id, void *location, param_setter_t setter) {
-  //Check if there is preallocated space available
-  if (handler->param_count >= handler->max_param_count) {
-    syslog(LOG_ERR, "Not enough space to register parameter (%s)%d.", 
-	   __FILE__, __LINE__);
-    return;
-  }
+               const char *id, void *location, param_setter_t setter) {
+  //Initialize the new definition structure
+  param_def_t def = {
+    .type = type,
+    .location = location,
+    .setter = setter,
+    .id = {0},
+  };
+  strncpy(def.id, id, MAX_LENGTH_PARAM_ID);
+
+  //Get the array index of the new definition
+  unsigned index = handler->param_array->len;
+
+  //Insert the definition in the array
+  g_array_append_val(handler->param_array, def);
   
-  //Get the next available parameter definition
-  param_def_t *def = handler->param_def + handler->param_count++;
-
-  //Copy the fields
-  def->type = type;
-  def->location = location;
-  def->setter = setter;
-  strncpy(def->id, id, MAX_LENGTH_PARAM_ID);
-  def->id[MAX_LENGTH_PARAM_ID] = 0; //Sentinel nul byte
-
-  //Insert the definition in the id map hash table
-  g_hash_table_insert(handler->id_map, (gpointer)id, def);
+  //Insert the id in the hash table
+  g_hash_table_insert(handler->id_tbl, (gpointer)id, GINT_TO_POINTER(index));
 }
 
 ret_status_t
@@ -122,10 +120,11 @@ param_load(param_handler_t *handler, const char *file) {
   }
   
   //Load values into parameters
-  for (int i = 0; i < handler->param_count; i++) {
+  for (int i = 0; i < handler->param_array->len; i++) {
     long long llvalue;
     double dvalue;
-    param_def_t *param_def = handler->param_def + i;
+    param_def_t *param_def = &g_array_index(handler->param_array, 
+                                            param_def_t, i);
     
     //Lookup the value
     switch (param_def->type) {
@@ -199,10 +198,11 @@ param_save(param_handler_t *handler, const char *file) {
   config_setting_t* root = config_root_setting(&config);
   
   //Populate configuration tree
-  for (int i = 0; i < handler->param_count; i++) {
+  for (int i = 0; i < handler->param_array->len; i++) {
     long long llvalue;
     double dvalue;
-    param_def_t *param_def = handler->param_def + i;
+    param_def_t *param_def = &g_array_index(handler->param_array, 
+                                            param_def_t, i);
     
     //Get the parameter value
     switch (param_def->type) {

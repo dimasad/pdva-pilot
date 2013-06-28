@@ -56,10 +56,8 @@ typedef struct {
 
 /// The parameter handler object
 typedef struct {
-  size_t param_count;
-  size_t max_param_count;
-  param_def_t *param_def;
-  GHashTable *id_map;
+  GArray *param_array;
+  GHashTable *id_tbl;
 } param_handler_t;
 
 
@@ -75,7 +73,7 @@ param_set(param_def_t* param_def, param_value_union_t new_value);
 
 /// Initialize the param_handler_t object.
 void
-param_handler_init(param_handler_t *handler, size_t max_param_count);
+param_handler_init(param_handler_t *handler, size_t reserved_size);
 
 /// Free the resources associted with a param_handler_t object.
 void
