@@ -164,13 +164,6 @@ param_save(param_handler_t *handler, const char *file) {
   config_t config;
   config_init(&config);
   
-  //Read configuration file
-  if (!config_read_file(&config, file)) {
-    syslog(LOG_ERR, "Error reading parameters file `%s' %s (%s)%d.",
-	   file, config_error_text(&config), __FILE__, __LINE__);
-    goto param_save_error;
-  }
-  
   //Get pointer into root configuration setting.
   config_setting_t* root = config_root_setting(&config);
   
@@ -235,10 +228,6 @@ param_save(param_handler_t *handler, const char *file) {
   
   config_destroy(&config);
   return STATUS_SUCCESS;  
-  
- param_save_error:
-  config_destroy(&config);
-  return STATUS_FAILURE;
 }
 
 

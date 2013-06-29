@@ -3,13 +3,17 @@
  * Unit tests of the parameter configuration infrastructure.
  */
 
+#include <fstream>
 #include <limits>
+#include <unistd.h>
 
 #include <gtest/gtest.h>
 
 #include "../param.h"
 
 using namespace std;
+using namespace testing;
+
 
 typedef enum MAV_PARAM_TYPE mav_param_type_t;
 
@@ -145,13 +149,8 @@ make_punion(float value) {
 }
 
 /// Parameter test fixture
-template <typename T>
-class ParamTest : public ::testing::Test {
-  
-};
-
-typedef ::testing::Types<int8_t, int16_t, int32_t, 
-                         uint8_t, uint16_t, uint32_t, float> ParamTypes;
+template <typename T> class ParamTest : public Test {};
+typedef Types<int8_t,int16_t,int32_t,uint8_t,uint16_t,uint32_t,float>ParamTypes;
 TYPED_TEST_CASE(ParamTest, ParamTypes);
 
 
@@ -203,4 +202,52 @@ TEST(ParamTest, CustomGetSet) {
   param_value_union_t new_value = {.param_int32 = -1000};
   EXPECT_EQ(param_set(&param, new_value), STATUS_SUCCESS);
   EXPECT_EQ(val.i, new_value.param_int32);
+}
+
+/// Parameter handler test fixture
+template <typename T> class ParamHandlerTest : public Test {};
+TYPED_TEST_CASE(ParamHandlerTest, ParamTypes);
+
+
+/// Test param handler load/save functions.
+TYPED_TEST(ParamHandlerTest, LoadSave) {
+  TypeParam min = numeric_limits<TypeParam>::min();
+  TypeParam max = numeric_limits<TypeParam>::max();
+  TypeParam save_val = min;
+  
+  enum MAV_PARAM_TYPE type = mav_param_type<TypeParam>();
+  param_handler_t save_handler;
+  param_handler_init(&save_handler, 1);
+  param_register(&save_handler, type, "test_param", &save_val, NULL, NULL);
+
+  const char *test_file = "param_handler_test.dat";
+  unlink(test_file);
+  EXPECT_EQ(param_save(&save_handler, test_file), STATUS_SUCCESS);
+  param_handler_destroy(&save_handler);
+  
+  TypeParam load_val = max;
+  param_handler_t load_handler;
+  param_handler_init(&load_handler, 0);
+  param_register(&load_handler, type, "test_param", &load_val, NULL, NULL);
+  
+  EXPECT_EQ(param_load(&load_handler, test_file), STATUS_SUCCESS);
+  EXPECT_EQ(load_val, save_val);
+  param_handler_destroy(&load_handler);
+}
+
+/// Test loading of pdva-pilot configuration object.
+TEST(PDVAConfigTest, Load) {
+  const char *config_file_name = "pdva_config_test.cfg";
+  const unsigned sysid = 255;
+  
+  ofstream config_file(config_file_name, ios::trunc);
+  config_file << "sysid = " << sysid << ";" << endl;
+  config_file.close();
+  
+  pdva_pilot_config_t config = {};
+  pdva_config_init(&config);
+  EXPECT_EQ(pdva_config_load(&config, config_file_name), STATUS_SUCCESS);
+  EXPECT_EQ(config.sysid, sysid);
+  
+  pdva_config_destroy(&config);
 }
