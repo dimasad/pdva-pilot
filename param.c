@@ -59,6 +59,26 @@ param_handler_destroy(param_handler_t *handler) {
   g_array_free(handler->param_array, TRUE);
 }
 
+uint16_t param_count(param_handler_t *handler) {
+  return handler->param_array->len;
+}
+
+param_t *
+param_lookup(param_handler_t *handler, const char *id, int16_t *index) {
+  if (*index >= handler->param_array->len)
+    return NULL;
+  
+  if (*index < 0) {
+    gpointer index_ptr;
+    if (g_hash_table_lookup_extended(handler->id_tbl, id, NULL, &index_ptr))
+      *index  = GPOINTER_TO_UINT(index);
+    else
+      return NULL;
+  }
+  
+  return &g_array_index(handler->param_array, param_t, *index);
+}
+
 void
 param_register(param_handler_t *handler, enum MAV_PARAM_TYPE type,
                const char *id, void *data,
@@ -80,7 +100,7 @@ param_register(param_handler_t *handler, enum MAV_PARAM_TYPE type,
   g_array_append_val(handler->param_array, param);
   
   //Insert the id in the hash table
-  g_hash_table_insert(handler->id_tbl, (gpointer)id, GINT_TO_POINTER(index));
+  g_hash_table_insert(handler->id_tbl, (gpointer)id, GUINT_TO_POINTER(index));
 }
 
 ret_status_t

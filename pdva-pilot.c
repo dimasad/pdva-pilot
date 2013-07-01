@@ -43,6 +43,13 @@ uint8_t dummy2 = 4; ///< Another dummy parameter.
 param_handler_t param_handler; ///< The runtime parameter handler.
 
 
+/* *** Prototypes *** */
+
+ret_status_t setup();
+void teardown();
+void param_set_msg_handler(mavlink_message_t *msg);
+void param_request_read_msg_handler(mavlink_message_t *msg);
+
 /* *** Internal functions *** */
 
 ret_status_t
@@ -81,6 +88,11 @@ setup() {
     return STATUS_FAILURE;
   }
 
+  //Register radio message handlers
+  radio_register_handler(MAVLINK_MSG_ID_PARAM_REQUEST_READ, 
+                         &param_request_read_msg_handler);
+  radio_register_handler(MAVLINK_MSG_ID_PARAM_SET, &param_set_msg_handler);
+
   //Setup the control module
   if (setup_control()) {
     syslog(LOG_ERR, "Could not setup the control module.");
@@ -105,6 +117,74 @@ main(int argc, char* argv[]) {
     return EXIT_FAILURE;
   }
   
+  start_control();
+  
+
   teardown();
   return EXIT_SUCCESS;
+}
+
+void param_request_read_msg_handler(mavlink_message_t *msg) {
+  //Retrieve the message payload
+  mavlink_param_request_read_t payload;    
+  mavlink_msg_param_request_read_decode(msg, &payload);
+
+  //See if we are the recipient of the message
+  if (payload.target_system != mavlink_system.sysid &&
+      payload.target_component != mavlink_system.compid)
+    return;
+
+  //Copy the id to an array which can hold the terminating nul byte
+  char id[MAX_LENGTH_PARAM_ID + 1] = {0};
+  strncpy(id, payload.param_id, MAX_LENGTH_PARAM_ID);
+  
+  //Lookup the parameter
+  param_t *param = param_lookup(&param_handler, id, &payload.param_index);
+  if (param == NULL)
+    return;
+  
+  //Get and send the parameter value
+  param_value_union_t val = param_get(param);
+  mavlink_msg_param_value_send(RADIO_COMM_CHANNEL, id, val.param_float,
+                               param->type, param_count(&param_handler),
+                               payload.param_index);
+}
+
+void param_set_msg_handler(mavlink_message_t *msg) {
+  //Retrieve the message payload
+  mavlink_param_set_t payload;    
+  mavlink_msg_param_set_decode(msg, &payload);
+
+  //Check if we are the recipient of the message
+  if (payload.target_system != mavlink_system.sysid &&
+      payload.target_component != mavlink_system.compid)
+    return;
+  
+  //Lookup the parameter
+  int16_t index = -1;
+  char id[MAX_LENGTH_PARAM_ID + 1] = {0};
+  strncpy(id, payload.param_id, MAX_LENGTH_PARAM_ID);
+  param_t *param = param_lookup(&param_handler, id, &index);
+  if (param == NULL)
+    return;
+
+  //Block all signals
+  sigset_t oldmask, newmask;
+  sigfillset(&newmask);
+  sigprocmask(SIG_SETMASK, &newmask, &oldmask);
+  
+  //Set the parameter
+  param_value_union_t val = {.param_float = payload.param_value};
+  ret_status_t set_status = param_set(param, val);
+  
+  //Restore the signal mask
+  sigprocmask(SIG_SETMASK, &oldmask, NULL);
+
+  //Broadcast the parameter
+  if (set_status == STATUS_SUCCESS) {
+    val = param_get(param);
+    mavlink_msg_param_value_send(RADIO_COMM_CHANNEL, id, val.param_float,
+                                 param->type, param_count(&param_handler),
+                                 index);
+  }
 }

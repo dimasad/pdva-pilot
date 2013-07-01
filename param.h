@@ -88,6 +88,21 @@ param_handler_init(param_handler_t *handler, size_t reserved_size);
 void
 param_handler_destroy(param_handler_t *handler);
 
+/// The number of parameters registered with the handler.
+uint16_t
+param_count(param_handler_t *handler);
+
+/** Lookup a parameter in the parameter handler.
+ *
+ * If `index < 0` the parameter is looked up by id, otherwise by index.
+ * @param id The parameter handler object.
+ * @param id The parameter id.
+ * @param[in,out] index The index of the requested parameter. 
+ * @return Pointer to requested parameter or NULL if parameter not found.
+ */
+param_t *
+param_lookup(param_handler_t *handler, const char *id, int16_t *index);
+
 /// Register a parameter definition with the handler
 void
 param_register(param_handler_t *handler, enum MAV_PARAM_TYPE type,
