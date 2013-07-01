@@ -174,7 +174,7 @@ alarm_handler(int signum, siginfo_t *info, void *context) {
     return;
 
   //Get readings from sensor head
-  if (read_sensor_head(&sensor_head_data)) {
+  if (sensor_head_read(&sensor_head_data)) {
     //How to proceed when failed to obtain sensor head measurements?
   }
   

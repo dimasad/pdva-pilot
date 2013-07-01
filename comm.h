@@ -5,6 +5,9 @@
  * Contains the MAVLink communication infrastructure.
  */
 
+#ifdef __cplusplus
+extern "C" {
+#endif //__cplusplus
 
 /* *** Includes *** */
 
@@ -25,31 +28,31 @@ extern mavlink_system_t mavlink_system;
 
 
 /* *** Functions *** */
-/*
-/// Announce parameters as a response to PARAM_REQUEST_LIST message.
-void param_announce();
+
+/// Handle all available messages on the RADIO_COMM_CHANNEL.
+void 
+radio_handle_all();
 
 /// Register a mavlink message handler.
-/// @return The previous handler.
+/// @return The previous registered handler.
 mavlink_message_handler_t
-register_message_handler(uint8_t msgid, mavlink_message_handler_t handler);
-
-/// Read from communication buffers.
-void recv_comm();
-
-/// Register a MAVLink component.
-void register_mav_component(uint8_t compid, param_def_t *params_def);
-*/
+radio_register_handler(uint8_t msgid, mavlink_message_handler_t handler);
 
 /// Get sensor head data from SENSOR_HEAD_COMM_CHANNEL.
 ret_status_t
-read_sensor_head(mavlink_sensor_head_data_t*);
+sensor_head_read(mavlink_sensor_head_data_t*);
 
 /// Setup the communication module.
-ret_status_t setup_comm();
+ret_status_t
+setup_comm();
 
 /// Free resources associated with the communication module.
-void teardown_comm();
+void
+teardown_comm();
 
+
+#ifdef __cplusplus
+}
+#endif //__cplusplus
 
 #endif // not PDVA__COMM_H

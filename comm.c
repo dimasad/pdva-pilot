@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/spi/spidev.h>
+#include <poll.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -50,30 +51,15 @@ static size_t sensor_head_send_count = 0; ///< Amount of data in buffer.
 /// Buffer for the outgoing data on the SENSOR_HEAD_COMM_CHANNEL
 static uint8_t sensor_head_send_buffer[MAVLINK_MAX_PACKET_LEN];
 
-/*
 static mavlink_message_handler_t msg_handlers[256];
 ///< Array with all registered message handlers, indexed by msgid.
 
-mav_component_t mav_components[MAX_MAV_COMPONENTS];
-///< Array with all registered MAVLink components, compid == 0 if slot free.
-
-int announce_target_component = -1;
-int announce_mav_component_index;
-int announce_param_index;
 
 /* *** Prototypes *** */
 
 /// Send data over a MAVLink channel.
 static inline void 
 mavlink_send_uart_bytes(mavlink_channel_t, const uint8_t*, size_t);
-
-/// Send data over the RADIO_COMM_CHANNEL.
-static inline void 
-radio_send_bytes(const uint8_t*, size_t);
-
-/// Send data over the SENSOR_HEAD_COMM_CHANNEL.
-static inline void 
-sensor_head_send_bytes(const uint8_t*, size_t);
 
 /// Start a message send over a MAVLink channel.
 static inline void
@@ -83,18 +69,21 @@ mavlink_start_uart_send(mavlink_channel_t chan, size_t len);
 static inline void
 mavlink_end_uart_send(mavlink_channel_t chan, size_t len);
 
+/// True if there is data available for reading in the RADIO_COMM_CHANNEL.
+static inline bool
+radio_data_available();
 
-/*
-/// Find given parameter definition.
-static param_def_t *
-find_param_def(uint8_t compid, const char *param_id, int *param_index, 
-	       int *param_count);
+/// Read from the RADIO_COMM_CHANNEL.
+static inline ret_status_t
+radio_read(mavlink_message_t *msg, mavlink_status_t *status);
 
-/// MAVLink message handler for PARAM_REQUEST_LIST message.
-static void param_request_list_handler(mavlink_message_t *msg);
+/// Send data over the RADIO_COMM_CHANNEL.
+static inline void 
+radio_send_bytes(const uint8_t*, size_t);
 
-/// MAVLink message handler for PARAM_SET message.
-static void param_set_handler(mavlink_message_t *msg);
+/// Send data over the SENSOR_HEAD_COMM_CHANNEL.
+static inline void 
+sensor_head_send_bytes(const uint8_t*, size_t);
 
 
 /* *** Include MAVLink helper functions *** */
@@ -105,106 +94,27 @@ static void param_set_handler(mavlink_message_t *msg);
 
 /* *** Public functions *** */
 
-/*
 void 
-param_announce() {
-  //See if there is need for announcement
-  if (announce_target_component < 0) 
-    return;
+radio_handle_all() {
+  mavlink_message_t msg;
+  mavlink_status_t status;
+  mavlink_message_handler_t handler;
   
-  //Get the current component and parameter definition
-  mav_component_t *comp = mav_components + announce_mav_component_index;
-  param_def_t *param_def = comp->param_defs + announce_param_index;
-
-  //Create the PARAM_VALUE message
-  mavlink_message_t msg;    
-  mavlink_msg_param_value_pack(pdva_config.sysid, comp->compid, &msg, 
-			       param_def->id, param_get(param_def).param_float,
-			       param_def->type, comp->param_count, 
-			       announce_param_index);
-  
-  //Send the message
-  uint8_t buf[MAVLINK_MSG_ID_PARAM_VALUE_LEN];
-  size_t len = mavlink_msg_to_send_buffer(buf, &msg);
-  mavlink_send_uart_bytes(RADIO_COMM_CHANNEL, buf, len);
-  
-  //Move to next parameter and check end of parameter list
-  if (++announce_param_index >= comp->param_count) {
-    //Check if more components are to be announced
-    if (announce_target_component != 0)
-      announce_target_component = -1;
-    else {
-      //Move to next component and check for end of component list
-      if (++announce_mav_component_index >= MAX_MAV_COMPONENTS)
-	announce_target_component = -1;
-    }
-  }
+  while (radio_data_available())
+    if (radio_read(&msg, &status) == STATUS_SUCCESS)
+      if (handler = msg_handlers[msg.msgid])
+        handler(&msg);
 }
 
 mavlink_message_handler_t
-register_message_handler(uint8_t msgid, mavlink_message_handler_t handler) {
+radio_register_handler(uint8_t msgid, mavlink_message_handler_t handler) {
   mavlink_message_handler_t old_handler = msg_handlers[msgid];
   msg_handlers[msgid] = handler;
   return old_handler;
 }
 
-void 
-register_mav_component(uint8_t compid, param_def_t *param_defs) {
-  for (int i = 0; i < MAX_MAV_COMPONENTS; i++) {
-    if (mav_components[i].compid == 0) {
-      mav_components[i].compid = compid;
-      mav_components[i].param_defs = param_defs;
-      
-      int j;
-      for (j = 0; !IS_PARAM_DEF_LIST_END(param_defs[j]); j++);
-      mav_components[i].param_count = j;
-      
-      return;
-    }
-  }
-  
-  syslog(LOG_ERR, "Maximum number of MAVLink components exceeded, could not "
-	 "register component #%d (%s)%d", compid, __FILE__, __LINE__);
-}
-
-void 
-recv_comm() {
-  mavlink_message_t msg;
-  mavlink_status_t status;
-
-  //Read from stream until it would block or an error occurs
-  for (int data = fgetc(radio); data != EOF; data = fgetc(radio)) {
-    
-    if(mavlink_parse_char(RADIO_COMM_CHANNEL, data, &msg, &status)) {
-      //Retrieve message handler
-      mavlink_message_handler_t handler = msg_handlers[msg.msgid];
-      
-      //Handle the message if a handler is registered
-      if (handler)
-	handler(&msg);
-    }
-  }
-  
-  //Treat error condition
-  if (ferror(radio)) {
-    switch (errno) {
-    case EAGAIN: 
-    case EINTR:
-      break;
-      
-    default:
-      syslog(LOG_ERR, "Error during RADIO_COMM_CHANNEL read: %m (%s)%d", 
-	     __FILE__, __LINE__);
-    }
-  }
-
-  //Clear the end-of-file and error indicators
-  clearerr(radio);
-}
-*/
-
 ret_status_t
-read_sensor_head(mavlink_sensor_head_data_t *payload) {
+sensor_head_read(mavlink_sensor_head_data_t *payload) {
   //Read data from SENSOR_HEAD_COMM_CHANNEL
   uint8_t buf[MAVLINK_MSG_ID_SENSOR_HEAD_DATA_LEN 
 	      + MAVLINK_NUM_NON_PAYLOAD_BYTES];
@@ -360,114 +270,45 @@ mavlink_end_uart_send(mavlink_channel_t chan, size_t len) {
   }
 }
 
-/*
-static param_def_t *
-find_param_def(uint8_t compid, const char *param_id, int *param_index, 
-	       int *param_count) {
-  //Transverse all components
-  for (int i = 0; i < MAX_MAV_COMPONENTS; i++) {
-    mav_component_t *comp = mav_components + i;
-    
-    //Check if the component id matches
-    if (comp->compid == compid) {
-      param_def_t *param_defs = comp->param_defs;
-
-      //Transverse all parameters
-      for (int j = 0; j < comp->param_count; j++) {
-	if (strncmp(param_defs[j].id, param_id, sizeof param_defs->id) == 0) {
-	  *param_index = j;
-	  *param_count = comp->param_count;
-	  return param_defs + j;
-	}
-      }
-    }
-    
-    //Check end of registered parameters
-    if (comp->compid == 0)
-      return NULL;
+static inline bool
+radio_data_available() {
+  struct pollfd fds = {.fd = radio, .events = POLLIN};
+  int polled = poll(&fds, 1, 0);
+  if (polled < 0) {
+    syslog(LOG_ERR, "Error during poll: %m (%s)%d", __FILE__, __LINE__);
+    return false;
   }
+
+  return polled;
 }
 
-static void param_request_list_handler(mavlink_message_t *msg) {
-  //Retrieve the message payload
-  mavlink_param_request_list_t payload;
-  mavlink_msg_param_request_list_decode(msg, &payload);
-
-  //Check if we are the target system
-  if (payload.target_system != pdva_config.sysid)
-    return;
-
+static inline ret_status_t
+radio_read(mavlink_message_t *msg, mavlink_status_t *status) {
+  uint8_t data;
+  ssize_t num_read = read(radio, &data, 1);
   
-  if (payload.target_component == 0) {
-    //Announce from all components
-    announce_target_component = 0;
-    announce_mav_component_index = 0;
-    announce_param_index = 0;
-    return;
+  //Read from radio stream until it would block or an error occurs
+  while (num_read == 1) {
+    //Parse the character
+    if(mavlink_parse_char(RADIO_COMM_CHANNEL, data, msg, status))
+      return STATUS_SUCCESS;
+    
+    //Read next byte
+    num_read = read(radio, &data, 1);
   }
   
-  //Find the index of the target component
-  for (int i = 0; i < MAX_MAV_COMPONENTS; i++) {
-    if (mav_components[i].compid == payload.target_component) {
-      announce_target_component = payload.target_component;
-      announce_mav_component_index = i;
-      announce_param_index = 0;
-      return;
+  //Treat error condition
+  if (num_read < 0) {
+    switch (errno) {
+    case EAGAIN: 
+    case EINTR:
+      break;
+      
+    default:
+      syslog(LOG_ERR, "Error during RADIO_COMM_CHANNEL read: %m (%s)%d", 
+	     __FILE__, __LINE__);
     }
   }
-    
-  //Could not find target component, do nothing.
-  syslog(LOG_DEBUG, "Attempt to request parameter list for inexistent "
-	 "component #%d.", payload.target_component);
+  
+  return STATUS_FAILURE;
 }
-
-static void param_set_handler(mavlink_message_t *msg) {
-  //Retrieve the message payload
-  mavlink_param_set_t payload;
-  mavlink_msg_param_set_decode(msg, &payload);
-
-  //Check if we are the target system
-  if (payload.target_system != pdva_config.sysid)
-    return;
-
-  int param_index, param_count;
-  param_def_t *param_def = find_param_def(payload.target_component, 
-					  payload.param_id, &param_index,
-					  &param_count);
-
-  if (param_def == NULL) {
-    syslog(LOG_DEBUG, "Attempt to set unexistent parameter %.16s in "
-	   "component #%d.", payload.param_id, payload.target_component);
-    return;
-  }
-
-  if (param_def->type != payload.param_type) {
-    syslog(LOG_DEBUG, "Attempt to set parameter %.16s to a value with the "
-	   "wrong type.", payload.param_id);
-    return;
-  }
-  
-  param_value_union_t new_value = {.param_float = payload.param_value};
-
-  //Block all signals
-  sigset_t set, old_set;
-  sigfillset(&set);
-  sigprocmask(SIG_BLOCK, &set, &old_set);
-  
-  //Update the parameter and broadcast the new value
-  if (update_param(param_def, new_value) == STATUS_SUCCESS) {
-    mavlink_message_t msg;    
-    mavlink_msg_param_value_pack(pdva_config.sysid, payload.target_component,
-				 &msg, payload.param_id,
-				 param_get(param_def).param_float,
-				 payload.param_type, param_count, param_index);
-
-    uint8_t buf[MAVLINK_MSG_ID_PARAM_VALUE_LEN];
-    size_t len = mavlink_msg_to_send_buffer(buf, &msg);
-    mavlink_send_uart_bytes(RADIO_COMM_CHANNEL, buf, len);
-  }
-  
-  //Restore blocked signals
-  sigprocmask(SIG_SETMASK, &old_set, NULL);
-}
-*/

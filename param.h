@@ -5,6 +5,9 @@
  * Contains the parameter configuration infrastructure.
  */
 
+#ifdef __cplusplus
+extern "C" {
+#endif //__cplusplus
 
 /* *** Includes *** */
 
@@ -16,9 +19,6 @@
 #include "mavlink_bridge.h"
 #include "pdva-pilot.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif //__cplusplus
 
 /* *** Macros *** */
 /// Maximum length of parameter id string

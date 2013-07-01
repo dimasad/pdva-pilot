@@ -108,6 +108,3 @@ main(int argc, char* argv[]) {
   teardown();
   return EXIT_SUCCESS;
 }
-
-  
-
