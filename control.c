@@ -40,6 +40,9 @@ static inline void calculate_control();
 
 /* *** Internal variables *** */
 
+/// Number of time the control loop has run.
+static uint64_t ticks = 0;
+
 /// Latest sensor data.
 static mavlink_sensor_head_data_t sensor_head_data; 
 
@@ -116,15 +119,32 @@ static double airspeed = 0;
 
 /* *** Public functions *** */
 
+/// The number of times the control loop has been called.
+uint64_t control_loop_ticks() {
+  //Block all signals
+  sigset_t oldmask, newmask;
+  sigfillset(&newmask);
+  sigprocmask(SIG_SETMASK, &newmask, &oldmask);
+
+  //Get the tick count
+  uint64_t ret = ticks;
+
+  //Restore the signal mask
+  sigprocmask(SIG_SETMASK, &oldmask, NULL);
+
+  return ret;
+}
+
+
 ret_status_t 
 setup_control() {
   //Initialize the pid controllers
-  pid_init(&aileron_pid, 0, 1, 1, INFINITY, 0);
-  pid_init(&elevator_pid, 0, 1, 1, INFINITY, 0);
-  pid_init(&throttle_pid, 0, 1, 1, INFINITY, 0);
-  pid_init(&rudder_pid, 0, 1, 1, INFINITY, 0);
-  pid_init(&roll_pid, -M_PI_2, M_PI_2, 1, INFINITY, 0);
-  pid_init(&pitch_pid, -M_PI_2, M_PI_2, 1, INFINITY, 0);
+  pid_init(&aileron_pid, 0, 1, 1, 0, 0, CONTROL_TIMER_PERIOD_S);
+  pid_init(&elevator_pid, 0, 1, 1, 0, 0, CONTROL_TIMER_PERIOD_S);
+  pid_init(&throttle_pid, 0, 1, 1, 0, 0, CONTROL_TIMER_PERIOD_S);
+  pid_init(&rudder_pid, 0, 1, 1, 0, 0, CONTROL_TIMER_PERIOD_S);
+  pid_init(&roll_pid, -M_PI_2, M_PI_2, 1, 0, 0, CONTROL_TIMER_PERIOD_S);
+  pid_init(&pitch_pid, -M_PI_2, M_PI_2, 1, 0, 0, CONTROL_TIMER_PERIOD_S);
   
   //Setup the interrupt handler
   struct sigaction alarm_action;
@@ -173,6 +193,9 @@ alarm_handler(int signum, siginfo_t *info, void *context) {
   if (signum != SIGALRM)
     return;
 
+  //Increment the tick counter
+  ticks++;
+  
   //Get readings from sensor head
   if (sensor_head_read(&sensor_head_data)) {
     //How to proceed when failed to obtain sensor head measurements?
@@ -193,40 +216,31 @@ static inline void
 calculate_control() {
   switch (control_configuration) {
   case ALTITUDE_FROM_POWER:
-    throttle_out = pid_update(&throttle_pid, altitude_ref,
-			      sensor_head_data.altitude * 0.01,
-			      CONTROL_TIMER_PERIOD_S);
+    throttle_out = pid_update(&throttle_pid,
+			      altitude_ref - sensor_head_data.altitude * 0.01);
     
-    pitch_ref = pid_update(&pitch_pid, airspeed_ref,
-			   sensor_head_data.airspeed * 0.01,
-			   CONTROL_TIMER_PERIOD_S);
+    pitch_ref = pid_update(&pitch_pid,
+			   airspeed_ref - sensor_head_data.airspeed * 0.01);
     break;
   case ALTITUDE_FROM_PITCH:
-    pitch_ref = pid_update(&pitch_pid, altitude_ref,
-			   sensor_head_data.altitude * 0.01,
-			   CONTROL_TIMER_PERIOD_S);
+    pitch_ref = pid_update(&pitch_pid,
+			   altitude_ref - sensor_head_data.altitude * 0.01);
     
-    throttle_out = pid_update(&throttle_pid, airspeed_ref,
-			      sensor_head_data.airspeed * 0.01,
-			      CONTROL_TIMER_PERIOD_S);
+    throttle_out = pid_update(&throttle_pid,
+			      airspeed_ref - sensor_head_data.airspeed * 0.01);
     break;
   }
 
-  roll_ref = pid_update(&roll_pid, yaw_ref,
-			sensor_head_data.att_est[2] * 0.001,
-			CONTROL_TIMER_PERIOD_S);
+  roll_ref = pid_update(&roll_pid,
+			yaw_ref - sensor_head_data.att_est[2] * 0.001);
     
-  aileron_out = pid_update(&aileron_pid, roll_ref,
-			   sensor_head_data.att_est[0] * 0.001,
-			   CONTROL_TIMER_PERIOD_S);
+  aileron_out = pid_update(&aileron_pid,
+			   roll_ref - sensor_head_data.att_est[0] * 0.001);
   
-  elevator_out = pid_update(&elevator_pid, pitch_ref,
-			    sensor_head_data.att_est[1] * 0.001,
-			    CONTROL_TIMER_PERIOD_S);
+  elevator_out = pid_update(&elevator_pid,
+			    pitch_ref - sensor_head_data.att_est[1] * 0.001);
   elevator_out += fabs(roll_ref) * elevator_ff;
   
-  rudder_out = pid_update(&rudder_pid, 0,
-			  sensor_head_data.acc[1],
-			  CONTROL_TIMER_PERIOD_S);
+  rudder_out = pid_update(&rudder_pid, - sensor_head_data.acc[1]);
   rudder_out += aileron_out * rudder_ff;
 }

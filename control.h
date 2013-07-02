@@ -20,6 +20,9 @@ enum control_configuration {
 
 /* *** Functions *** */
 
+/// The number of times the control loop has been called.
+uint64_t control_loop_ticks();
+
 /// Setup the control module.
 ret_status_t setup_control();
 
@@ -28,6 +31,5 @@ ret_status_t start_control();
 
 /// Free resources associated with the control module.
 void teardown_control();
-
 
 #endif // not PDVA__CONTROL_H
