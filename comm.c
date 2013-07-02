@@ -106,6 +106,13 @@ radio_handle_all() {
         handler(&msg);
 }
 
+void
+radio_poll() {
+  struct pollfd fds = {.fd = radio, .events = POLLIN};
+  int polled = poll(&fds, 1, -1);
+}
+
+
 mavlink_message_handler_t
 radio_register_handler(uint8_t msgid, mavlink_message_handler_t handler) {
   mavlink_message_handler_t old_handler = msg_handlers[msgid];

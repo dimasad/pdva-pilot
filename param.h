@@ -92,14 +92,12 @@ param_handler_destroy(param_handler_t *handler);
 uint16_t
 param_count(param_handler_t *handler);
 
-/** Lookup a parameter in the parameter handler.
- *
- * If `index < 0` the parameter is looked up by id, otherwise by index.
- * @param id The parameter handler object.
- * @param id The parameter id.
- * @param[in,out] index The index of the requested parameter. 
- * @return Pointer to requested parameter or NULL if parameter not found.
- */
+/// Lookup a parameter in the parameter handler.
+/// If `index < 0` the parameter is looked up by id, otherwise by index.
+/// @param[in] handler The parameter handler object.
+/// @param[in] id The parameter id.
+/// @param[in,out] index The index of the requested parameter. 
+/// @return Pointer to requested parameter or NULL if parameter not found.
 param_t *
 param_lookup(param_handler_t *handler, const char *id, int16_t *index);
 

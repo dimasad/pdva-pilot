@@ -110,20 +110,6 @@ teardown() {
   closelog();
 }
 
-int
-main(int argc, char* argv[]) {
-  if (setup()) {
-    syslog(LOG_CRIT, "Failure in pdva-pilot setup, aborting.");
-    return EXIT_FAILURE;
-  }
-  
-  start_control();
-  
-
-  teardown();
-  return EXIT_SUCCESS;
-}
-
 void param_request_read_msg_handler(mavlink_message_t *msg) {
   //Retrieve the message payload
   mavlink_param_request_read_t payload;    
@@ -187,4 +173,21 @@ void param_set_msg_handler(mavlink_message_t *msg) {
                                  param->type, param_count(&param_handler),
                                  index);
   }
+}
+
+int
+main(int argc, char* argv[]) {
+  if (setup()) {
+    syslog(LOG_CRIT, "Failure in pdva-pilot setup, aborting.");
+    return EXIT_FAILURE;
+  }
+  
+  start_control();
+  while (true) {
+    radio_poll();
+    radio_handle_all();
+  }
+
+  teardown();
+  return EXIT_SUCCESS;
 }

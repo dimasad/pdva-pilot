@@ -33,6 +33,10 @@ extern mavlink_system_t mavlink_system;
 void 
 radio_handle_all();
 
+/// Block until data is available in the radio channel or a signal arrives.
+void
+radio_poll();
+
 /// Register a mavlink message handler.
 /// @return The previous registered handler.
 mavlink_message_handler_t
