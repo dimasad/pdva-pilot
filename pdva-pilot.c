@@ -4,7 +4,9 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <syslog.h>
+#include <sys/time.h>
 
 #include <libconfig.h>
 
@@ -17,6 +19,11 @@
 
 
 /* *** Macros *** */
+
+#ifndef PARAM_LIST_SEND_INTERVAL_S
+#define PARAM_LIST_SEND_INTERVAL_S 0.25
+///< Interval in seconds for sending parameters of a PARAM_REQUEST_LIST.
+#endif // not PARAM_LIST_SEND_INTERVAL_S
 
 #ifndef PDVA_CONFIG_DIR
 #define PDVA_CONFIG_DIR "/etc/pdva"
@@ -33,6 +40,10 @@
 
 mavlink_system_t mavlink_system;
 pdva_pilot_config_t pdva_config;
+struct {
+  struct timeval last_sent;
+  int next_index;
+} param_list_queue = {.last_sent = {0,0}, .next_index = -1};
 
 
 /* *** Mavlink parameters *** */
@@ -47,8 +58,18 @@ param_handler_t param_handler; ///< The runtime parameter handler.
 
 ret_status_t setup();
 void teardown();
-void param_set_msg_handler(mavlink_message_t *msg);
+
+/// Send parameters queued by PARAM_REQUEST_LIST MAVLink message.
+void param_list_send_queued();
+
+/// Handler for PARAM_REQUEST_LIST MAVLink message.
+void param_request_list_msg_handler(mavlink_message_t *msg);
+
+/// Handler for PARAM_REQUEST_READ MAVLink message.
 void param_request_read_msg_handler(mavlink_message_t *msg);
+
+/// Handler for PARAM_SET MAVLink message.
+void param_set_msg_handler(mavlink_message_t *msg);
 
 /* *** Internal functions *** */
 
@@ -89,6 +110,8 @@ setup() {
   }
 
   //Register radio message handlers
+  radio_register_handler(MAVLINK_MSG_ID_PARAM_REQUEST_LIST, 
+                         &param_request_list_msg_handler);
   radio_register_handler(MAVLINK_MSG_ID_PARAM_REQUEST_READ, 
                          &param_request_read_msg_handler);
   radio_register_handler(MAVLINK_MSG_ID_PARAM_SET, &param_set_msg_handler);
@@ -108,6 +131,54 @@ teardown() {
   teardown_comm();
   pdva_config_destroy(&pdva_config);
   closelog();
+}
+
+void param_list_send_queued() {
+  if (param_list_queue.next_index < 0)
+    return;
+  
+  //Get current time
+  struct timeval now;
+  gettimeofday(&now, NULL);
+  
+  //Calculate the elapsed time since last parameter was sent
+  double dt_secs = now.tv_sec - param_list_queue.last_sent.tv_sec;
+  dt_secs += 1e-6*(now.tv_usec - param_list_queue.last_sent.tv_usec);
+  
+  if (dt_secs >= PARAM_LIST_SEND_INTERVAL_S) {
+    //Lookup the parameter
+    int16_t index = param_list_queue.next_index++;
+    param_t *param = param_lookup(&param_handler, "", &index);
+    if (param == NULL) {
+      param_list_queue.next_index = -1;
+      return;
+    }
+  
+    //Get and send the parameter value
+    param_value_union_t val = param_get(param);
+    char id[MAX_LENGTH_PARAM_ID] = {0};
+    strncpy(id, param->id, sizeof id);
+    mavlink_msg_param_value_send(RADIO_COMM_CHANNEL, id, val.param_float,
+                                 param->type, param_count(&param_handler),
+                                 index);
+    
+    //Save the time the parameter was sent
+    memcpy(&param_list_queue.last_sent, &now, sizeof(struct timeval));
+  }
+}
+
+void param_request_list_msg_handler(mavlink_message_t *msg) {
+  //Retrieve the message payload
+  mavlink_param_request_list_t payload;    
+  mavlink_msg_param_request_list_decode(msg, &payload);
+
+  //See if we are the recipient of the message
+  if (payload.target_system != mavlink_system.sysid &&
+      payload.target_component != mavlink_system.compid)
+    return;
+
+  //Set the next_index to the start of the list
+  param_list_queue.next_index = 0;
 }
 
 void param_request_read_msg_handler(mavlink_message_t *msg) {
@@ -186,6 +257,7 @@ main(int argc, char* argv[]) {
   while (true) {
     radio_poll();
     radio_handle_all();
+    param_list_send_queued();
   }
 
   teardown();
