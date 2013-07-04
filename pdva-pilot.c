@@ -1,5 +1,6 @@
 /* *** Includes *** */
 
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -12,6 +13,7 @@
 
 #include "comm.h"
 #include "control.h"
+#include "datalog.h"
 #include "mavlink_bridge.h"
 #include "param.h"
 #include "pdva-pilot.h"
@@ -40,10 +42,19 @@
 
 mavlink_system_t mavlink_system;
 pdva_pilot_config_t pdva_config;
+datalog_t datalog;
+
 struct {
   struct timeval last_sent;
   int next_index;
 } param_list_queue = {.last_sent = {0,0}, .next_index = -1};
+
+struct {
+  uint16_t imu_raw;
+  uint16_t gps_raw;
+  uint16_t pressure_raw;
+  uint16_t attitude;
+} telemetry_downsample = {0,0,0,0};
 
 
 /* *** Mavlink parameters *** */
@@ -59,6 +70,9 @@ param_handler_t param_handler; ///< The runtime parameter handler.
 ret_status_t setup();
 void teardown();
 
+/// Write data to datalogs.
+void datalog_write_all();
+
 /// Send parameters queued by PARAM_REQUEST_LIST MAVLink message.
 void param_list_send_queued();
 
@@ -70,6 +84,12 @@ void param_request_read_msg_handler(mavlink_message_t *msg);
 
 /// Handler for PARAM_SET MAVLink message.
 void param_set_msg_handler(mavlink_message_t *msg);
+
+/// Handler for REQUEST_DATA_STREAM MAVLink message.
+void request_data_stream_msg_handler(mavlink_message_t *msg);
+
+/// Send all telemetry messages currently on.
+void telemetry_send_all();
 
 /* *** Internal functions *** */
 
@@ -109,12 +129,18 @@ setup() {
     return STATUS_FAILURE;
   }
 
+  //Setup the datalogs
+  datalog_init(&datalog, "/var/log/pdva/sensor_head", "/var/log/pdva/control");
+
   //Register radio message handlers
   radio_register_handler(MAVLINK_MSG_ID_PARAM_REQUEST_LIST, 
                          &param_request_list_msg_handler);
   radio_register_handler(MAVLINK_MSG_ID_PARAM_REQUEST_READ, 
                          &param_request_read_msg_handler);
-  radio_register_handler(MAVLINK_MSG_ID_PARAM_SET, &param_set_msg_handler);
+  radio_register_handler(MAVLINK_MSG_ID_PARAM_SET, 
+                         &param_set_msg_handler);
+  radio_register_handler(MAVLINK_MSG_ID_REQUEST_DATA_STREAM, 
+                         &request_data_stream_msg_handler);
 
   //Setup the control module
   if (setup_control()) {
@@ -128,9 +154,19 @@ setup() {
 void 
 teardown() {
   teardown_control();
+  datalog_destroy(&datalog);
   teardown_comm();
   pdva_config_destroy(&pdva_config);
   closelog();
+}
+
+void datalog_write_all() {
+  //Get the sensor data
+  mavlink_sensor_head_data_t data;
+  get_sensor_head_data(&data);
+  
+  //Write the sensor data to the log.
+  log_sensor_head(&datalog, &data);
 }
 
 void param_list_send_queued() {
@@ -246,6 +282,70 @@ void param_set_msg_handler(mavlink_message_t *msg) {
   }
 }
 
+void request_data_stream_msg_handler(mavlink_message_t *msg) {
+  //Retrieve the message payload
+  mavlink_request_data_stream_t payload;
+  mavlink_msg_request_data_stream_decode(msg, &payload);
+  
+  //Check if we are the recipient of the message
+  if (payload.target_system != mavlink_system.sysid &&
+      payload.target_component != mavlink_system.compid)
+    return;
+  
+  uint16_t downrate = (payload.start_stop == 1) * payload.req_stream_id;
+  
+  switch (payload.req_stream_id) {
+  case MAV_DATA_STREAM_RAW_SENSORS:
+    telemetry_downsample.imu_raw = downrate;
+    telemetry_downsample.gps_raw = downrate;
+    telemetry_downsample.pressure_raw = downrate;
+    
+  case MAV_DATA_STREAM_ALL:
+    telemetry_downsample.imu_raw = downrate;
+    telemetry_downsample.gps_raw = downrate;
+    telemetry_downsample.pressure_raw = downrate;
+    telemetry_downsample.attitude = downrate;
+  }
+}
+
+void
+telemetry_send_all() {
+  //Get the sensor data and tick count
+  mavlink_sensor_head_data_t data;
+  get_sensor_head_data(&data);
+  unsigned ticks = control_loop_ticks();
+  
+  if (telemetry_downsample.imu_raw && 
+      ticks % telemetry_downsample.imu_raw == 0) {
+    mavlink_msg_raw_imu_send(RADIO_COMM_CHANNEL, data.time_boot_ms*1000,
+                             data.acc[0], data.acc[1], data.acc[2],
+                             data.gyro[0], data.gyro[1], data.gyro[2],
+                             data.mag[0], data.mag[1], data.mag[2]);
+  }
+  
+  if (telemetry_downsample.gps_raw && 
+      ticks % telemetry_downsample.gps_raw == 0) {
+    double gps_hspeed = sqrt(pow(data.vel_gps[0], 2) +pow(data.vel_gps[1],2));
+    mavlink_msg_gps_raw_int_send(RADIO_COMM_CHANNEL, data.time_boot_ms*1000,
+                                 3, data.lat_gps, data.lon_gps, data.alt_gps,
+                                 UINT16_MAX, UINT16_MAX, gps_hspeed,
+                                 data.hdg_gps * 180 / M_PI / 10, 255);
+  }
+
+  if (telemetry_downsample.pressure_raw && 
+      ticks % telemetry_downsample.pressure_raw == 0) {
+    mavlink_msg_raw_pressure_send(RADIO_COMM_CHANNEL, data.time_boot_ms,
+                                  data.stat_press, data.dyn_press, 0, 0);
+  }
+
+  if (telemetry_downsample.attitude && 
+      ticks % telemetry_downsample.attitude == 0) {
+    mavlink_msg_attitude_send(RADIO_COMM_CHANNEL, data.time_boot_ms,
+                              data.att_est[0], data.att_est[1], data.att_est[2],
+                              0, 0, 0);
+  }
+}
+
 int
 main(int argc, char* argv[]) {
   if (setup()) {
@@ -258,6 +358,7 @@ main(int argc, char* argv[]) {
     radio_poll();
     radio_handle_all();
     param_list_send_queued();
+    telemetry_send_all();
   }
 
   teardown();

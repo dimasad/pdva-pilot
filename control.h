@@ -21,7 +21,10 @@ enum control_configuration {
 /* *** Functions *** */
 
 /// The number of times the control loop has been called.
-uint64_t control_loop_ticks();
+unsigned control_loop_ticks();
+
+/// Get the latest sensor head data available.
+void get_sensor_head_data(mavlink_sensor_head_data_t *sensor_head_data);
 
 /// Setup the control module.
 ret_status_t setup_control();

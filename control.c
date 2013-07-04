@@ -44,7 +44,7 @@ static inline void calculate_control();
 static uint64_t ticks = 0;
 
 /// Latest sensor data.
-static mavlink_sensor_head_data_t sensor_head_data; 
+static mavlink_sensor_head_data_t sensor_head_data;
 
 /// Control loop timer object.
 static timer_t timer;
@@ -120,7 +120,7 @@ static double airspeed = 0;
 /* *** Public functions *** */
 
 /// The number of times the control loop has been called.
-uint64_t control_loop_ticks() {
+unsigned control_loop_ticks() {
   //Block all signals
   sigset_t oldmask, newmask;
   sigfillset(&newmask);
@@ -133,6 +133,20 @@ uint64_t control_loop_ticks() {
   sigprocmask(SIG_SETMASK, &oldmask, NULL);
 
   return ret;
+}
+
+void
+get_sensor_head_data(mavlink_sensor_head_data_t *out) {
+  //Block all signals
+  sigset_t oldmask, newmask;
+  sigfillset(&newmask);
+  sigprocmask(SIG_SETMASK, &newmask, &oldmask);
+
+  //Get the tick count
+  memcpy(out, &sensor_head_data, sizeof(mavlink_sensor_head_data_t));
+
+  //Restore the signal mask
+  sigprocmask(SIG_SETMASK, &oldmask, NULL);  
 }
 
 

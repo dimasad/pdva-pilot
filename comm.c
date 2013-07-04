@@ -210,10 +210,14 @@ ret_status_t setup_comm() {
 
 void teardown_comm() {
   //Close the RADIO_COMM_CHANNEL
-  close(radio);
+  if (close(radio))
+    syslog(LOG_ERR, "Error closing radio channel %m (%s)%d",
+           __FILE__, __LINE__);
 
   //Close the SENSOR_HEAD_COMM_CHANNEL
-  close(sensor_head);
+  if (close(sensor_head))
+    syslog(LOG_ERR, "Error closing sensor head channel %m (%s)%d", 
+           __FILE__, __LINE__);
 }
 
 
