@@ -14,6 +14,7 @@
 #include <libconfig.h>
 
 #include "param.h"
+#include "control.h"
 
 
 /* *** Prototypes *** */
@@ -258,6 +259,12 @@ pdva_config_destroy(pdva_pilot_config_t *pdva_config) {
 /// Initialize pdva_pilot_config_t structure.
 void 
 pdva_config_init(pdva_pilot_config_t *pdva_config) {
+  pdva_config->datalog_timer_period.tv_sec = 0;
+  pdva_config->datalog_timer_period.tv_nsec = CONTROL_TIMER_PERIOD_NS;
+  pdva_config->downsample.sensor = 1;
+  pdva_config->downsample.attitude = 1;
+  pdva_config->downsample.gps = 1;
+  pdva_config->downsample.control = 1;
   pdva_config->sysid = 0;
 }
 
@@ -277,8 +284,21 @@ pdva_config_load(pdva_pilot_config_t *pdva_config, const char *file) {
   }
   
   int sysid;
+  long long llvalue;
   if (config_lookup_int(&config, "sysid", &sysid))
     pdva_config->sysid = sysid;
+  if (config_lookup_int64(&config, "datalog_timer_period_s", &llvalue))
+    pdva_config->datalog_timer_period.tv_sec = llvalue;
+  if (config_lookup_int64(&config, "datalog_timer_period_ns", &llvalue))
+    pdva_config->datalog_timer_period.tv_nsec = llvalue;
+  config_lookup_int(&config, "downsample_sensor",
+	&pdva_config->downsample.sensor);
+  config_lookup_int(&config, "downsample_attitude",
+	&pdva_config->downsample.attitude);
+  config_lookup_int(&config, "downsample_gps",
+	&pdva_config->downsample.gps);
+  config_lookup_int(&config, "downsample_control",
+	&pdva_config->downsample.control);
   
   config_destroy(&config);
   return STATUS_SUCCESS;

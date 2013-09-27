@@ -15,6 +15,7 @@
 #include <sys/ioctl.h>
 #include <time.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #include "comm.h"
 #include "control.h"
@@ -22,25 +23,19 @@
 #include "param.h"
 #include "pid.h"
 
-
-/* *** Macros *** */
-
-#ifndef CONTROL_TIMER_PERIOD_NS
-#define CONTROL_TIMER_PERIOD_NS 500000000L
-///< Period of the control loop in nanosecods.
-#endif // not CONTROL_TIMER_PERIOD_NS
-
-#define CONTROL_TIMER_PERIOD_S (CONTROL_TIMER_PERIOD_NS / 1e9)
-
 /* *** Prototypes *** */
 
 static void alarm_handler(int signum, siginfo_t *info, void *context);
 static inline void calculate_control();
 
+/* *** Variables *** */
+
+/// Mutex used to protect the internal variables
+pthread_mutex_t mutex;
 
 /* *** Internal variables *** */
 
-/// Number of time the control loop has run.
+/// Number of times the control loop has run.
 static uint64_t ticks = 0;
 
 /// Latest sensor data.
@@ -115,6 +110,10 @@ static double altitude = 0;
 /// Airspeed in m/s.
 static double airspeed = 0;
 
+/// Control output
+static control_out_t control_out =
+       {.aileron = 0, .elevator = 0, .throttle = 0, .rudder = 0};
+
 
 
 /* *** Public functions *** */
@@ -126,8 +125,20 @@ unsigned control_loop_ticks() {
   sigfillset(&newmask);
   sigprocmask(SIG_SETMASK, &newmask, &oldmask);
 
+  //Lock mutex
+  if (pthread_mutex_lock(&mutex)) {
+    syslog(LOG_ERR, "Error locking mutex: %m (%s)%d",
+	   __FILE__, __LINE__);
+  }
+
   //Get the tick count
   uint64_t ret = ticks;
+
+  //Unlock mutex
+  if (pthread_mutex_unlock(&mutex)) {
+    syslog(LOG_ERR, "Error unlocking mutex: %m (%s)%d",
+	   __FILE__, __LINE__);
+  }
 
   //Restore the signal mask
   sigprocmask(SIG_SETMASK, &oldmask, NULL);
@@ -136,14 +147,31 @@ unsigned control_loop_ticks() {
 }
 
 void
-get_sensor_head_data(mavlink_sensor_head_data_t *out) {
+get_sensor_and_control_data(
+       mavlink_sensor_head_data_t *sensor, control_out_t *control) {
+
   //Block all signals
   sigset_t oldmask, newmask;
   sigfillset(&newmask);
   sigprocmask(SIG_SETMASK, &newmask, &oldmask);
 
-  //Get the tick count
-  memcpy(out, &sensor_head_data, sizeof(mavlink_sensor_head_data_t));
+  //Lock mutex
+  if (pthread_mutex_lock(&mutex)) {
+    syslog(LOG_ERR, "Error locking mutex: %m (%s)%d",
+	   __FILE__, __LINE__);
+  }
+
+  //Get the sensor head data
+  memcpy(sensor, &sensor_head_data, sizeof(mavlink_sensor_head_data_t));
+
+  //Get the control data
+  memcpy(control, &control_out, sizeof(control_out_t));
+
+  //Unlock mutex
+  if (pthread_mutex_unlock(&mutex)) {
+    syslog(LOG_ERR, "Error unlocking mutex: %m (%s)%d",
+	   __FILE__, __LINE__);
+  }
 
   //Restore the signal mask
   sigprocmask(SIG_SETMASK, &oldmask, NULL);  
@@ -173,6 +201,13 @@ setup_control() {
 	   __FILE__, __LINE__);
     return STATUS_FAILURE;
   }
+
+  //Initialize mutex
+  if (pthread_mutex_init(&mutex, NULL)) {
+    syslog(LOG_ERR, "Error initializing mutex: %m (%s)%d",
+	   __FILE__, __LINE__);
+    return STATUS_FAILURE;
+  }
   
   return STATUS_SUCCESS;
 }
@@ -197,6 +232,10 @@ start_control() {
 void 
 teardown_control() {
   timer_delete(timer);
+  if(pthread_mutex_destroy(&mutex)){
+    syslog(LOG_ERR, "Error destroying mutex: %m (%s)%d",
+	   __FILE__, __LINE__);
+  }
 }
 
 
@@ -206,6 +245,12 @@ static void
 alarm_handler(int signum, siginfo_t *info, void *context) {
   if (signum != SIGALRM)
     return;
+
+  //Lock mutex
+  if (pthread_mutex_lock(&mutex)) {
+    syslog(LOG_ERR, "Error locking mutex: %m (%s)%d",
+	   __FILE__, __LINE__);
+  }
 
   //Increment the tick counter
   ticks++;
@@ -217,13 +262,19 @@ alarm_handler(int signum, siginfo_t *info, void *context) {
   
   //Calculate the control action
   calculate_control();
+
+  //Unlock mutex
+  if (pthread_mutex_unlock(&mutex)) {
+    syslog(LOG_ERR, "Error unlocking mutex: %m (%s)%d",
+	   __FILE__, __LINE__);
+  }
   
   //Write control action to the sensor head
   mavlink_msg_sensor_head_command_send(SENSOR_HEAD_COMM_CHANNEL,
-				       aileron_out*65535,
-				       elevator_out*65535,
-				       throttle_out*65535,
-				       rudder_out*65535, 0, 0, 0, 0);
+				       control_out.aileron,
+				       control_out.elevator,
+				       control_out.throttle,
+				       control_out.rudder, 0, 0, 0, 0);
 }
 
 static inline void 
@@ -257,4 +308,10 @@ calculate_control() {
   
   rudder_out = pid_update(&rudder_pid, - sensor_head_data.acc[1]);
   rudder_out += aileron_out * rudder_ff;
+
+  control_out.aileron = aileron_out * 65535;
+  control_out.elevator = elevator_out * 65535;
+  control_out.throttle = throttle_out * 65535;
+  control_out.rudder = rudder_out * 65535;
 }
+

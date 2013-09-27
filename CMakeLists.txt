@@ -19,7 +19,7 @@ find_package (libconfig REQUIRED)
 include_directories (${libconfig_INCLUDE_DIRS})
 
 # Set compiler options
-set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99")
+set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -pthread")
 
 # Add the project libraries
 add_library (comm comm.c)

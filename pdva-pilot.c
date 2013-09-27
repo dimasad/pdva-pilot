@@ -8,6 +8,7 @@
 #include <string.h>
 #include <syslog.h>
 #include <sys/time.h>
+#include <pthread.h>
 
 #include <libconfig.h>
 
@@ -40,9 +41,10 @@
 
 /* *** Variables *** */
 
+pthread_t datalog_thread;
+
 mavlink_system_t mavlink_system;
 pdva_pilot_config_t pdva_config;
-datalog_t datalog;
 
 struct {
   struct timeval last_sent;
@@ -70,9 +72,6 @@ param_handler_t param_handler; ///< The runtime parameter handler.
 ret_status_t setup();
 void teardown();
 
-/// Write data to datalogs.
-void datalog_write_all();
-
 /// Send parameters queued by PARAM_REQUEST_LIST MAVLink message.
 void param_list_send_queued();
 
@@ -90,6 +89,10 @@ void request_data_stream_msg_handler(mavlink_message_t *msg);
 
 /// Send all telemetry messages currently on.
 void telemetry_send_all();
+
+/// Creates a new thread with the specified priority.
+int create_thread_with_priority(pthread_t * thread,
+       void *(*start_routine) (void *), int priority);
 
 /* *** Internal functions *** */
 
@@ -129,8 +132,6 @@ setup() {
     return STATUS_FAILURE;
   }
 
-  //Setup the datalogs
-  datalog_init(&datalog, "/var/log/pdva/sensor_head", "/var/log/pdva/control");
 
   //Register radio message handlers
   radio_register_handler(MAVLINK_MSG_ID_PARAM_REQUEST_LIST, 
@@ -154,19 +155,9 @@ setup() {
 void 
 teardown() {
   teardown_control();
-  datalog_destroy(&datalog);
   teardown_comm();
   pdva_config_destroy(&pdva_config);
   closelog();
-}
-
-void datalog_write_all() {
-  //Get the sensor data
-  mavlink_sensor_head_data_t data;
-  get_sensor_head_data(&data);
-  
-  //Write the sensor data to the log.
-  log_sensor_head(&datalog, &data);
 }
 
 void param_list_send_queued() {
@@ -312,7 +303,8 @@ void
 telemetry_send_all() {
   //Get the sensor data and tick count
   mavlink_sensor_head_data_t data;
-  get_sensor_head_data(&data);
+  control_out_t control_data;
+  get_sensor_and_control_data(&data, &control_data);
   unsigned ticks = control_loop_ticks();
   
   if (telemetry_downsample.imu_raw && 
@@ -346,14 +338,57 @@ telemetry_send_all() {
   }
 }
 
+
+int
+create_thread_with_priority(pthread_t * thread,
+       void *(*start_routine) (void *), int priority) {
+
+  pthread_attr_t attr;
+
+  if(pthread_attr_init(&attr)){
+    syslog(LOG_ERR, "Could not initialize thread attributes.");
+    return STATUS_FAILURE;
+  }
+  if(pthread_attr_setschedpolicy(&attr, SCHED_RR)){
+    syslog(LOG_ERR, "Could not set thread scheduling policy.");
+    return STATUS_FAILURE;
+  }
+  struct sched_param prio = {.sched_priority = priority};
+  if(pthread_attr_setschedparam(&attr, &prio)){
+    syslog(LOG_ERR, "Could not set thread priority.");
+    return STATUS_FAILURE;
+  }
+  if(pthread_create(thread, &attr, start_routine, NULL)){
+    syslog(LOG_ERR, "Could not create datalog thread.");
+    return STATUS_FAILURE;
+  }
+  if(pthread_attr_destroy(&attr)){
+    syslog(LOG_ERR, "Could not destroy datalog thread attributes.");
+    return STATUS_FAILURE;
+  }
+}
+
 int
 main(int argc, char* argv[]) {
   if (setup()) {
     syslog(LOG_CRIT, "Failure in pdva-pilot setup, aborting.");
-    return EXIT_FAILURE;
+    return STATUS_FAILURE;
   }
-  
+
+  pthread_t main_thread = pthread_self();
+  struct sched_param prio = {.sched_priority = 3};
+  if(pthread_setschedparam(main_thread, SCHED_RR, &prio)){
+    syslog(LOG_ERR, "Could not set main thread priority.");
+    return STATUS_FAILURE;
+  }
+
   start_control();
+
+  if(create_thread_with_priority(&datalog_thread, &datalogging, 1)){
+    syslog(LOG_ERR, "Error creating datalog thread.");
+    return STATUS_FAILURE;
+  }
+
   while (true) {
     radio_poll();
     radio_handle_all();
@@ -362,5 +397,15 @@ main(int argc, char* argv[]) {
   }
 
   teardown();
-  return EXIT_SUCCESS;
+  void *retval;
+  if(pthread_join(datalog_thread, &retval)){
+    syslog(LOG_ERR, "Could not join datalog thread.");
+    return STATUS_FAILURE;
+  }
+  if(retval){
+    syslog(LOG_ERR, "Datalog thread exited with nonzero status.");
+    return STATUS_FAILURE;
+  }
+
+  return STATUS_SUCCESS;
 }

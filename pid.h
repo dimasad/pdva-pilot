@@ -1,3 +1,5 @@
+#ifndef PDVA__PID_H
+#define PDVA__PID_H
 
 /** @file
  * Interface of the PID control library.
@@ -47,3 +49,5 @@ pid_set_auto(pid_controller_t *pid, double action);
 void 
 pid_set_manual(pid_controller_t *pid);
 */
+
+#endif // not PDVA__PID_H

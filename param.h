@@ -26,9 +26,18 @@ extern "C" {
 
 
 /* *** Types *** */
+/// Downsample structure for datalogging
+typedef struct {
+  int sensor;
+  int attitude;
+  int gps;
+  int control;
+} datalog_downsample_t;
 
 /// Configuration structure of the pdva-pilot instance.
 typedef struct {
+  struct timespec datalog_timer_period;
+  datalog_downsample_t downsample;
   uint8_t sysid;
 } pdva_pilot_config_t;
 

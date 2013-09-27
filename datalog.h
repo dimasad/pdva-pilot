@@ -16,29 +16,41 @@ extern "C" {
 #include "mavlink_bridge.h"
 #include "pdva-pilot.h"
 
+/* *** Macros *** */
+/// Path to the datalogging directory
+#define DATALOG_DIR "/var/log/pdva"
+/// Maximum length for the path string
+#define MAX_PATH_LENGTH 50
+
 
 /* *** Types *** */
 
 /// Configuration structure of the pdva-pilot instance.
 typedef struct {
   FILE *sensor;
+  FILE *attitude;
+  FILE *gps;
   FILE *control;
 } datalog_t;
 
 
 /* *** Functions *** */
 
+/// Function executed by the datalog thread.
+void *
+datalogging(void *);
+
 /// Initizalize a datalog object.
 ret_status_t
-datalog_init(datalog_t *log, const char *sensor, const char *control);
+datalog_init(datalog_t *log);
+
+/// Alarm handler for the datalog timer.
+void
+datalog_alarm_handler(union sigval);
 
 /// Free the resources associated with a datalog object.
 void
 datalog_destroy(datalog_t *log);
-
-/// Write the sensor head data to the log.
-void
-log_sensor_head(datalog_t *log, mavlink_sensor_head_data_t *data);
 
 
 #ifdef __cplusplus
