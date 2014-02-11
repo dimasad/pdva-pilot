@@ -15,6 +15,7 @@ extern "C" {
 #include <stdint.h>
 
 #include <glib.h>
+#include <libconfig.h>
 
 #include "mavlink_bridge.h"
 #include "pdva-pilot.h"
@@ -26,12 +27,20 @@ extern "C" {
 
 
 /* *** Types *** */
+/// Downsample structure for a single file
+typedef struct {
+  int M;     ///< Downsampling factor.
+  int n;     ///< Order of the digital low-pass filter
+  double *a; ///< Denominator coefficients (from a[0] to a[n]).
+  double *b; ///< Numerator coefficients (from b[0] to b[n]).
+} downsample_t;
+
 /// Downsample structure for datalogging
 typedef struct {
-  int sensor;
-  int attitude;
-  int gps;
-  int control;
+  downsample_t sensor;
+  downsample_t attitude;
+  downsample_t gps;
+  downsample_t control;
 } datalog_downsample_t;
 
 /// Configuration structure of the pdva-pilot instance.
@@ -128,6 +137,10 @@ param_save(param_handler_t *handler, const char *file);
 void 
 pdva_config_destroy(pdva_pilot_config_t *);
 
+/// Free the resources associted with a downsample_t object.
+void
+downsample_destroy(downsample_t *);
+
 /// Initialize pdva_pilot_config_t object.
 void 
 pdva_config_init(pdva_pilot_config_t *pdva_config);
@@ -135,6 +148,10 @@ pdva_config_init(pdva_pilot_config_t *pdva_config);
 /// Load pdva-pilot configuration from file.
 ret_status_t
 pdva_config_load(pdva_pilot_config_t *pdva_config, const char *file);
+
+/// Load downsample configuration from file.
+void
+downsample_config_load(config_t *config, downsample_t *down, char *name);
 
 #ifdef __cplusplus
 }

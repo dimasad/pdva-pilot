@@ -26,13 +26,20 @@
 
 /* *** Macros *** */
 
+#ifndef FAKE_SPI
+//#define FAKE_SPI //###########################################################
+///< For tests which do not use SPI interface.
+#endif // not FAKE_SPI
+
 #ifndef RADIO_STREAM_PATH
-#define RADIO_STREAM_PATH "/dev/ttyS2"
+//#define RADIO_STREAM_PATH "/dev/ttyS2"
+#define RADIO_STREAM_PATH "/dev/null" //######################################
 ///< File path of the RADIO_COMM_CHANNEL.
 #endif // not RADIO_STREAM_PATH
 
 #ifndef SENSOR_HEAD_STREAM_PATH
-#define SENSOR_HEAD_STREAM_PATH "/dev/spidev1.1"
+//#define SENSOR_HEAD_STREAM_PATH "/dev/spidev1.1"
+#define SENSOR_HEAD_STREAM_PATH "/tmp/sensor-head" //####################
 ///< File path of the SENSOR_HEAD_COMM_CHANNEL
 #endif // not SENSOR_HEAD_STREAM_PATH
 

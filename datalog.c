@@ -5,6 +5,7 @@
 
 /* *** Includes *** */
 
+#include <stdlib.h>
 #include <fcntl.h>
 #include <syslog.h>
 #include <unistd.h>
@@ -14,7 +15,6 @@
 #include <pthread.h>
 
 #include "datalog.h"
-#include "control.h"
 #include "param.h"
 
 /* *** Variables *** */
@@ -39,6 +39,9 @@ static mavlink_sensor_head_data_t sensor_data;
 /// Local copy of the control output.
 static control_out_t control_out;
 
+/// Low-pass filter structures.
+filter_t filter_sensor, filter_attitude, filter_gps, filter_control;
+
 
 /* *** Public functions *** */
 
@@ -53,7 +56,7 @@ datalogging(void *arg) {
   pthread_t this_thread = pthread_self();
   if(pthread_getattr_np(this_thread, &attr)){
     syslog(LOG_ERR, "Could not get datalog thread attributes.");
-    return STATUS_FAILURE;
+    return (void *) STATUS_FAILURE;
   }
 
   //Initialize the sigevent structure
@@ -67,13 +70,13 @@ datalogging(void *arg) {
   if (timer_create(CLOCK_REALTIME, &sevp, &datalog_timer)) {
     syslog(LOG_ERR, "Error creating datalog timer: %m (%s)%d",
 	   __FILE__, __LINE__);
-    return STATUS_FAILURE;
+    return (void *) STATUS_FAILURE;
   }
 
   //Destroy the thread attributes (no longer needed)
   if(pthread_attr_destroy(&attr)){
     syslog(LOG_ERR, "Could not destroy datalog thread attributes.");
-    return STATUS_FAILURE;
+    return (void *) STATUS_FAILURE;
   }
 
   //Set timer
@@ -86,7 +89,7 @@ datalogging(void *arg) {
   if (timer_settime(datalog_timer, 0, &timer_spec, NULL)) {
     syslog(LOG_ERR, "Error setting control loop timer: %m (%s)%d.",
 	   __FILE__, __LINE__);
-    return STATUS_FAILURE;
+    return (void *) STATUS_FAILURE;
   }
 
 
@@ -100,7 +103,8 @@ datalogging(void *arg) {
 ret_status_t
 datalog_init(datalog_t *log) {
   //Initialize the stream pointers
-  log->sensor = log->attitude = log->gps = log->control = NULL;
+  log->sensor = log->attitude = log->gps =
+  log->control = log->telecommand = NULL;
 
   //Create the datalog directory (if it doesn't already exist)
   mkdir(DATALOG_DIR, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
@@ -118,14 +122,14 @@ datalog_init(datalog_t *log) {
   experiment++;
   
   //Create a new directory for the current experiment
-  char filename[MAX_PATH_LENGTH];
-  snprintf(filename, MAX_PATH_LENGTH, "%s/%03d",
+  char filename[MAX_LENGTH];
+  snprintf(filename, MAX_LENGTH, "%s/%03d",
          DATALOG_DIR, experiment);
   mkdir(filename, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
 
 
   //Create the sensor log file
-  snprintf(filename, MAX_PATH_LENGTH, "%s/%03d/sensor",
+  snprintf(filename, MAX_LENGTH, "%s/%03d/sensor",
          DATALOG_DIR, experiment);
   log->sensor = fopen(filename, "w");
   if (log->sensor == NULL) {
@@ -144,7 +148,7 @@ datalog_init(datalog_t *log) {
           "dyn_p\tstat_p\n");
 
   //Create the attitude log file
-  snprintf(filename, MAX_PATH_LENGTH, "%s/%03d/attitude",
+  snprintf(filename, MAX_LENGTH, "%s/%03d/attitude",
          DATALOG_DIR, experiment);
   log->attitude = fopen(filename, "w");
   if (log->attitude == NULL) {
@@ -160,7 +164,7 @@ datalog_init(datalog_t *log) {
           "alti\n");
 
   //Create the gps log file
-  snprintf(filename, MAX_PATH_LENGTH, "%s/%03d/gps",
+  snprintf(filename, MAX_LENGTH, "%s/%03d/gps",
          DATALOG_DIR, experiment);
   log->gps = fopen(filename, "w");
   if (log->gps == NULL) {
@@ -176,7 +180,7 @@ datalog_init(datalog_t *log) {
           "vel0\tvel1\tvel2\n");
 
   //Create the control log file
-  snprintf(filename, MAX_PATH_LENGTH, "%s/%03d/control",
+  snprintf(filename, MAX_LENGTH, "%s/%03d/control",
          DATALOG_DIR, experiment);
   log->control = fopen(filename, "w");
   if (log->control == NULL) {
@@ -188,6 +192,20 @@ datalog_init(datalog_t *log) {
   fprintf(log->control,
           "time\t"
           "aileron\televator\tthrottle\trudder\n");
+
+  //Create the telecommand log file
+  snprintf(filename, MAX_LENGTH, "%s/%03d/telecommand",
+         DATALOG_DIR, experiment);
+  log->telecommand = fopen(filename, "w");
+  if (log->telecommand == NULL) {
+    syslog(LOG_ERR, "Error opening telecommand log file `%s' %m (%s)%d",
+           filename, __FILE__, __LINE__);
+    return STATUS_FAILURE;
+  }
+
+  fprintf(log->telecommand,
+          "time\t"
+          "command\n");
   
   //Write the number of the last experiment (current one)
   experiment_file = fopen(DATALOG_DIR "/last_experiment", "w");
@@ -201,17 +219,51 @@ datalog_init(datalog_t *log) {
     syslog(LOG_ERR, "Error on last experiment close %m (%s)%d",
            __FILE__, __LINE__);
 
+  //Initialize filters
+  filter_init(&filter_sensor, pdva_config.downsample.sensor.n,
+                              NUM_VAR_SENSOR,
+                              pdva_config.downsample.sensor.a,
+                              pdva_config.downsample.sensor.b);
+  filter_init(&filter_attitude, pdva_config.downsample.attitude.n,
+                                NUM_VAR_ATTITUDE,
+                                pdva_config.downsample.attitude.a,
+                                pdva_config.downsample.attitude.b);
+  filter_init(&filter_gps, pdva_config.downsample.gps.n,
+                           NUM_VAR_GPS,
+                           pdva_config.downsample.gps.a,
+                           pdva_config.downsample.gps.b);
+  filter_init(&filter_control, pdva_config.downsample.control.n,
+                               NUM_VAR_CONTROL,
+                               pdva_config.downsample.control.a,
+                               pdva_config.downsample.control.b);
+
   return STATUS_SUCCESS;
 }
 
 void datalog_alarm_handler(union sigval arg) {
+  double var_sensor[NUM_VAR_SENSOR],
+         var_attitude[NUM_VAR_ATTITUDE],
+         var_gps[NUM_VAR_GPS],
+         var_control[NUM_VAR_CONTROL];
+  double *new_sensor, *new_attitude, *new_gps, *new_control;
 
   //Get the most recent data from the control thread
   get_sensor_and_control_data(&sensor_data, &control_out);
 
+  data_to_filter(&sensor_data, &control_out,
+                 var_sensor, var_attitude, var_gps, var_control);
+
+  new_sensor = filter_update(&filter_sensor, var_sensor);
+  new_attitude = filter_update(&filter_attitude, var_attitude);
+  new_gps = filter_update(&filter_gps, var_gps);
+  new_control = filter_update(&filter_control, var_control);
+
+  filter_to_data(&sensor_data, &control_out,
+                 new_sensor, new_attitude, new_gps, new_control);
+
   //Write sensor file
-  if (pdva_config.downsample.sensor &&
-      ticks % pdva_config.downsample.sensor == 0)
+  if (pdva_config.downsample.sensor.M &&
+      ticks % pdva_config.downsample.sensor.M == 0)
     fprintf(datalog.sensor,
           "%u\t"
           "%u\t%u\t%u\t"
@@ -238,8 +290,8 @@ void datalog_alarm_handler(union sigval arg) {
           sensor_data.dyn_press, sensor_data.stat_press);
 
   //Write attitude file
-  if (pdva_config.downsample.attitude &&
-      ticks % pdva_config.downsample.attitude == 0)
+  if (pdva_config.downsample.attitude.M &&
+      ticks % pdva_config.downsample.attitude.M == 0)
     fprintf(datalog.attitude,
           "%u\t"
           "%d\t%d\t%d\t"
@@ -255,8 +307,8 @@ void datalog_alarm_handler(union sigval arg) {
           sensor_data.altitude);
 
   //Write gps file
-  if (pdva_config.downsample.gps &&
-      ticks % pdva_config.downsample.gps == 0)
+  if (pdva_config.downsample.gps.M &&
+      ticks % pdva_config.downsample.gps.M == 0)
     fprintf(datalog.gps,
           "%u\t"
           "%d\t%d\t%d\t"
@@ -272,8 +324,8 @@ void datalog_alarm_handler(union sigval arg) {
           sensor_data.vel_gps[2]);
 
   //Write control file
-  if (pdva_config.downsample.control &&
-      ticks % pdva_config.downsample.control == 0)
+  if (pdva_config.downsample.control.M &&
+      ticks % pdva_config.downsample.control.M == 0)
     fprintf(datalog.control,
           "%u\t"
           "%u\t%u\t%u\t%u\n",
@@ -302,9 +354,180 @@ datalog_destroy(datalog_t *log) {
   if (fclose(log->gps))
     syslog(LOG_ERR, "Error on gps log close %m (%s)%d",
            __FILE__, __LINE__);
+
   if (fclose(log->control))
     syslog(LOG_ERR, "Error on control log close %m (%s)%d",
            __FILE__, __LINE__);
+
+  if (fclose(log->telecommand))
+    syslog(LOG_ERR, "Error on telecommand log close %m (%s)%d",
+           __FILE__, __LINE__);
+
+  filter_destroy(&filter_sensor);
+  filter_destroy(&filter_attitude);
+  filter_destroy(&filter_gps);
+  filter_destroy(&filter_control);
+}
+
+
+void
+filter_init(filter_t *filter, int n, int v, double *a, double *b){
+  int i;
+
+  filter->n = n;
+  filter->v = v;
+  filter->k = 0;
+  filter->enable = FALSE;
+  filter->a = (double *) malloc( (n+1) * sizeof(double) );
+  filter->b = (double *) malloc( (n+1) * sizeof(double) );
+  filter->X = (double *) malloc( (n+1) * v * sizeof(double) );
+  filter->Y = (double *) malloc( (n+1) * v * sizeof(double) );
+  for(i=0; i<(n+1); ++i){
+    filter->a[i] = a[i];
+    filter->b[i] = b[i];
+  }
+  for(i=0; i<(n+1)*v; ++i){
+    filter->X[i] = 0.0;
+    filter->Y[i] = 0.0;
+  }
+}
+
+void
+filter_destroy(filter_t *filter){
+  free(filter->a);
+  free(filter->b);
+  free(filter->X);
+  free(filter->Y);
+}
+
+
+/// Update the filter (one iteraction).
+double *
+filter_update(filter_t *f, double *x){
+  int i, j, l;
+
+  if(f->enable){
+
+    for(i=0; i < f->v; ++i){
+      f->X[f->k * f->v + i] = x[i];
+      f->Y[f->k * f->v + i] = 0.0;
+    }
+
+    // Calculate the sum b[0]*x[k]+...+b[n]*x[k-n]
+    for(j=0; j < f->n+1; ++j){
+      l = (f->n+1 + f->k - j) % (f->n+1);
+      for(i=0; i < f->v; ++i){
+        f->Y[f->k * f->v + i] += f->b[j] * f->X[l * f->v + i];
+      }
+    }
+
+    // Subtract the sum a[1]*y[k-1]+...+a[n]*y[k-n]
+    for(j=1; j < f->n+1; ++j){
+      l = (f->n+1 + f->k - j) % (f->n+1);
+      for(i=0; i < f->v; ++i){
+        f->Y[f->k * f->v + i] -= f->a[j] * f->Y[l * f->v + i];
+      }
+    }
+
+    // Divide by a[0]
+    for(i=0; i < f->v; ++i){
+      f->Y[f->k * f->v + i] /= f->a[0];
+    }
+
+  }else{ // not f->enable
+
+    for(i=0; i < f->v; ++i){
+      f->X[f->k * f->v + i] = x[i];
+      f->Y[f->k * f->v + i] = x[i];
+    }
+
+  }
+
+  l = f->k;
+  f->k++;
+  if(f->k == f->n+1){
+    f->k = 0;
+    f->enable = TRUE;
+  }
+
+  return &f->Y[l * f->v];
+
+}
+
+
+/// Convert sensor head and control data to double arrays for filtering
+void data_to_filter(mavlink_sensor_head_data_t * sensor_data,
+       control_out_t * control_out, double * var_sensor,
+       double * var_attitude, double * var_gps, double * var_control){
+  int i;
+
+  for(i=0;i<3;++i)
+    var_sensor[i] = (double) sensor_data->acc[i];
+  for(i=0;i<3;++i)
+    var_sensor[3+i] = (double) sensor_data->gyro[i];
+  var_sensor[6] = (double) sensor_data->gyro_temp;
+  for(i=0;i<3;++i)
+    var_sensor[7+i] = (double) sensor_data->mag[i];
+  for(i=0;i<16;++i)
+    var_sensor[10+i] = (double) sensor_data->adc[i];
+  var_sensor[26] = (double) sensor_data->dyn_press;
+  var_sensor[27] = (double) sensor_data->stat_press;
+
+  for(i=0;i<3;++i)
+    var_attitude[i] = (double) sensor_data->att_est[i];
+  var_attitude[3] = (double) sensor_data->airspeed;
+  var_attitude[4] = (double) sensor_data->altitude;
+
+  var_gps[0] = (double) sensor_data->lat_gps;
+  var_gps[1] = (double) sensor_data->lon_gps;
+  var_gps[2] = (double) sensor_data->alt_gps;
+  var_gps[3] = (double) sensor_data->hdg_gps;
+  for(i=0;i<3;++i)
+    var_gps[4+i] = (double) sensor_data->vel_gps[i];
+
+  var_control[0] = (double) control_out->aileron;
+  var_control[1] = (double) control_out->elevator;
+  var_control[2] = (double) control_out->throttle;
+  var_control[3] = (double) control_out->rudder;
+
+}
+
+/// Convert double arrays back to sensor head and control data.
+void filter_to_data(mavlink_sensor_head_data_t * sensor_data,
+       control_out_t * control_out, double * var_sensor,
+       double * var_attitude, double * var_gps, double * var_control){
+
+  int i;
+
+  for(i=0;i<3;++i)
+    sensor_data->acc[i] = (unsigned short) var_sensor[i];
+  for(i=0;i<3;++i)
+    sensor_data->gyro[i] = (unsigned short) var_sensor[3+i];
+  sensor_data->gyro_temp = (unsigned short) var_sensor[6];
+  for(i=0;i<3;++i)
+    sensor_data->mag[i] = (unsigned short) var_sensor[7+i];
+  for(i=0;i<16;++i)
+    sensor_data->adc[i] = (unsigned short) var_sensor[10+i];
+  sensor_data->dyn_press = (unsigned) var_sensor[26];
+  sensor_data->stat_press = (unsigned) var_sensor[27];
+
+  for(i=0;i<3;++i)
+    sensor_data->att_est[i] = (short) var_attitude[i];
+  sensor_data->airspeed = (unsigned) var_attitude[3];
+  sensor_data->altitude = (int) var_attitude[4];
+
+  sensor_data->lat_gps = (int) var_gps[0];
+  sensor_data->lon_gps = (int) var_gps[1];
+  sensor_data->alt_gps = (int) var_gps[2];
+  sensor_data->hdg_gps = (short) var_gps[3];
+  for(i=0;i<3;++i)
+    sensor_data->vel_gps[i] = (short) var_gps[4+i];
+
+  control_out->aileron = (unsigned) var_control[0];
+  control_out->elevator = (unsigned) var_control[1];
+  control_out->throttle = (unsigned) var_control[2];
+  control_out->rudder = (unsigned) var_control[3];
+
 }
 
 

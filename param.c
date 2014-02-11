@@ -11,10 +11,9 @@
 #include <string.h>
 #include <syslog.h>
 
-#include <libconfig.h>
-
 #include "param.h"
 #include "control.h"
+#include "datalog.h"
 
 
 /* *** Prototypes *** */
@@ -251,9 +250,20 @@ param_save(param_handler_t *handler, const char *file) {
   return STATUS_SUCCESS;  
 }
 
-
+/// Free the resources associted with a pdva_pilot_config_t object.
 void 
 pdva_config_destroy(pdva_pilot_config_t *pdva_config) {
+  downsample_destroy(&pdva_config->downsample.sensor);
+  downsample_destroy(&pdva_config->downsample.attitude);
+  downsample_destroy(&pdva_config->downsample.gps);
+  downsample_destroy(&pdva_config->downsample.control);
+}
+
+/// Free the resources associted with a downsample_t object.
+void
+downsample_destroy(downsample_t * down){
+  free(down->a);
+  free(down->b);
 }
 
 /// Initialize pdva_pilot_config_t structure.
@@ -261,10 +271,14 @@ void
 pdva_config_init(pdva_pilot_config_t *pdva_config) {
   pdva_config->datalog_timer_period.tv_sec = 0;
   pdva_config->datalog_timer_period.tv_nsec = CONTROL_TIMER_PERIOD_NS;
-  pdva_config->downsample.sensor = 1;
-  pdva_config->downsample.attitude = 1;
-  pdva_config->downsample.gps = 1;
-  pdva_config->downsample.control = 1;
+  pdva_config->downsample.sensor.M = 1;
+  pdva_config->downsample.sensor.n = 0;
+  pdva_config->downsample.attitude.M = 1;
+  pdva_config->downsample.attitude.n = 0;
+  pdva_config->downsample.gps.M = 1;
+  pdva_config->downsample.gps.n = 0;
+  pdva_config->downsample.control.M = 1;
+  pdva_config->downsample.control.n = 0;
   pdva_config->sysid = 0;
 }
 
@@ -291,15 +305,17 @@ pdva_config_load(pdva_pilot_config_t *pdva_config, const char *file) {
     pdva_config->datalog_timer_period.tv_sec = llvalue;
   if (config_lookup_int64(&config, "datalog_timer_period_ns", &llvalue))
     pdva_config->datalog_timer_period.tv_nsec = llvalue;
-  config_lookup_int(&config, "downsample_sensor",
-	&pdva_config->downsample.sensor);
-  config_lookup_int(&config, "downsample_attitude",
-	&pdva_config->downsample.attitude);
-  config_lookup_int(&config, "downsample_gps",
-	&pdva_config->downsample.gps);
-  config_lookup_int(&config, "downsample_control",
-	&pdva_config->downsample.control);
-  
+
+  downsample_config_load(&config, &pdva_config->downsample.sensor,
+         "sensor");
+  downsample_config_load(&config, &pdva_config->downsample.attitude,
+         "attitude");
+  downsample_config_load(&config, &pdva_config->downsample.gps,
+         "gps");
+  downsample_config_load(&config, &pdva_config->downsample.control,
+         "control");
+
+
   config_destroy(&config);
   return STATUS_SUCCESS;
 
@@ -308,6 +324,35 @@ pdva_config_load(pdva_pilot_config_t *pdva_config, const char *file) {
   return STATUS_FAILURE;
 }
 
+
+/// Load downsample configuration from file.
+void
+downsample_config_load(config_t *config, downsample_t *down, char *name){
+  char param_name[MAX_LENGTH];
+  int i;
+
+  snprintf(param_name, MAX_LENGTH, "downsample_%s", name);
+  config_lookup_int(config, param_name, &down->M);
+
+  snprintf(param_name, MAX_LENGTH, "filter_%s_n", name);
+  config_lookup_int(config, param_name, &down->n);
+
+
+  down->a = (double *) malloc( (down->n+1) * sizeof(double) );
+  down->b = (double *) malloc( (down->n+1) * sizeof(double) );
+
+  for(i=0; i < down->n+1; ++i){
+    down->a[i] = (i==0);
+    down->b[i] = (i==0);
+  }
+  for(i=0; i < down->n+1; ++i){
+    snprintf(param_name, MAX_LENGTH, "filter_%s_a_%d", name, i);
+    config_lookup_float(config, param_name, &down->a[i]);
+    snprintf(param_name, MAX_LENGTH, "filter_%s_b_%d", name, i);
+    config_lookup_float(config, param_name, &down->b[i]);
+  }
+
+}
 
 /* *** Internal functions *** */
 
