@@ -258,7 +258,17 @@ alarm_handler(int signum, siginfo_t *info, void *context) {
   //Get readings from sensor head
   if (sensor_head_read(&sensor_head_data)) {
     //How to proceed when failed to obtain sensor head measurements?
+    //Unlock mutex
+    if (pthread_mutex_unlock(&mutex)) {
+      syslog(LOG_ERR, "Error unlocking mutex: %m (%s)%d",
+  	   __FILE__, __LINE__);
+    }
+    return;
+
   }
+
+
+printf("Mensagem recebida\n");
   
   //Calculate the control action
   calculate_control();
@@ -268,13 +278,16 @@ alarm_handler(int signum, siginfo_t *info, void *context) {
     syslog(LOG_ERR, "Error unlocking mutex: %m (%s)%d",
 	   __FILE__, __LINE__);
   }
-  
+
   //Write control action to the sensor head
   mavlink_msg_sensor_head_command_send(SENSOR_HEAD_COMM_CHANNEL,
 				       control_out.aileron,
 				       control_out.elevator,
 				       control_out.throttle,
 				       control_out.rudder, 0, 0, 0, 0);
+
+
+  printf("Writing commands: %d,%d,%d,%d\n",control_out.aileron,control_out.elevator,control_out.throttle,control_out.rudder);
 }
 
 static inline void 

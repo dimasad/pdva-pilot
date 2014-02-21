@@ -93,7 +93,9 @@ datalogging(void *arg) {
   }
 
 
-  pause();
+printf("before pause\n");
+    pause();
+printf("after pause\n");
 
   datalog_destroy(&datalog);
 
@@ -246,7 +248,7 @@ void datalog_alarm_handler(union sigval arg) {
          var_gps[NUM_VAR_GPS],
          var_control[NUM_VAR_CONTROL];
   double *new_sensor, *new_attitude, *new_gps, *new_control;
-
+//printf("DatalogAlarm!!!\n");
   //Get the most recent data from the control thread
   get_sensor_and_control_data(&sensor_data, &control_out);
 

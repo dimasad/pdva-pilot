@@ -349,7 +349,7 @@ create_thread_with_priority(pthread_t * thread,
     syslog(LOG_ERR, "Could not initialize thread attributes.");
     return STATUS_FAILURE;
   }
-  if(pthread_attr_setschedpolicy(&attr, SCHED_RR)){
+  if(pthread_attr_setschedpolicy(&attr, SCHED_OTHER)){/////////////////////SCHED_RR
     syslog(LOG_ERR, "Could not set thread scheduling policy.");
     return STATUS_FAILURE;
   }
@@ -376,15 +376,15 @@ main(int argc, char* argv[]) {
   }
 
   pthread_t main_thread = pthread_self();
-  struct sched_param prio = {.sched_priority = 3};
-  if(pthread_setschedparam(main_thread, SCHED_RR, &prio)){
+  struct sched_param prio = {.sched_priority = 0};////////////////////3
+  if(pthread_setschedparam(main_thread, SCHED_OTHER, &prio)){///////////////////////SCHED_RR
     syslog(LOG_ERR, "Could not set main thread priority.");
     return STATUS_FAILURE;
   }
 
   start_control();
 
-  if(create_thread_with_priority(&datalog_thread, &datalogging, 1)){
+  if(create_thread_with_priority(&datalog_thread, &datalogging, 0)){////////////1
     syslog(LOG_ERR, "Error creating datalog thread.");
     return STATUS_FAILURE;
   }

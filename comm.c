@@ -27,13 +27,13 @@
 /* *** Macros *** */
 
 #ifndef FAKE_SPI
-//#define FAKE_SPI //###########################################################
+#define FAKE_SPI //###########################################################
 ///< For tests which do not use SPI interface.
 #endif // not FAKE_SPI
 
 #ifndef RADIO_STREAM_PATH
 //#define RADIO_STREAM_PATH "/dev/ttyS2"
-#define RADIO_STREAM_PATH "/dev/null" //######################################
+#define RADIO_STREAM_PATH "/tmp/my_empty_file"
 ///< File path of the RADIO_COMM_CHANNEL.
 #endif // not RADIO_STREAM_PATH
 
@@ -133,8 +133,9 @@ sensor_head_read(mavlink_sensor_head_data_t *payload) {
   uint8_t buf[MAVLINK_MSG_ID_SENSOR_HEAD_DATA_LEN 
 	      + MAVLINK_NUM_NON_PAYLOAD_BYTES];
   mavlink_reset_channel_status(SENSOR_HEAD_COMM_CHANNEL);
+
   ssize_t len = read(sensor_head, &buf, sizeof buf);
-  
+
   //Check if read successful
   if (len < 0) {
     syslog(LOG_DEBUG, "Error reading from sensor head: %m (%s)%d",
@@ -154,17 +155,16 @@ sensor_head_read(mavlink_sensor_head_data_t *payload) {
   
   //Parse the data
   for (int i = 0; i < sizeof buf; i++)
-    mavlink_parse_char(SENSOR_HEAD_COMM_CHANNEL, buf[i], &msg, &status);
-  
-  if (!status.msg_received) {
+    if(mavlink_parse_char(SENSOR_HEAD_COMM_CHANNEL, buf[i], &msg, &status)){
+        //Retrieve the message payload and return
+        mavlink_msg_sensor_head_data_decode(&msg, payload);
+        return STATUS_SUCCESS;
+    }
+
     syslog(LOG_DEBUG, "Could not decode message from sensor head (%s)%d",
 	   __FILE__, __LINE__);
     return STATUS_FAILURE;
-  }
   
-  //Retrieve the message payload and return
-  mavlink_msg_sensor_head_data_decode(&msg, payload);
-  return STATUS_SUCCESS;
 }
 
 ret_status_t setup_comm() {
@@ -186,6 +186,9 @@ ret_status_t setup_comm() {
 	   "(%s)%d", SENSOR_HEAD_STREAM_PATH, __FILE__, __LINE__);    
     return STATUS_FAILURE;
   }
+
+  //Set sensor_head stream for nonblocking operation
+  fcntl(sensor_head, F_SETFL, O_NONBLOCK);
   
 #ifndef FAKE_SPI
 
@@ -272,6 +275,7 @@ sensor_head_send_bytes(const uint8_t* buff, size_t len) {
 
   //Copy data to buffer
   memcpy(sensor_head_send_buffer + sensor_head_send_count, buff, len);
+  sensor_head_send_count += len;
 }
 
 static inline void
