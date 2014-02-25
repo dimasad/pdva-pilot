@@ -1,4 +1,9 @@
-cmake_minimum_required (VERSION 2.6)
+cmake_minimum_required (VERSION 2.6.3)
+
+#Workaround for cmake bug #13125
+if (CMAKE_VERSION EQUAL "2.8.8")
+  set (PKG_CONFIG_FOUND "true")
+endif (CMAKE_VERSION EQUAL "2.8.8")
 
 # Configure the project
 project (pdva-pilot)
