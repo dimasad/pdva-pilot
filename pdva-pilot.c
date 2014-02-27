@@ -309,7 +309,7 @@ telemetry_send_all() {
   
   if (telemetry_downsample.imu_raw && 
       ticks % telemetry_downsample.imu_raw == 0) {
-    mavlink_msg_raw_imu_send(RADIO_COMM_CHANNEL, data.time_boot_ms*1000,
+    mavlink_msg_raw_imu_send(RADIO_COMM_CHANNEL, data.time_gps_ms*1000,
                              data.acc[0], data.acc[1], data.acc[2],
                              data.gyro[0], data.gyro[1], data.gyro[2],
                              data.mag[0], data.mag[1], data.mag[2]);
@@ -317,22 +317,21 @@ telemetry_send_all() {
   
   if (telemetry_downsample.gps_raw && 
       ticks % telemetry_downsample.gps_raw == 0) {
-    double gps_hspeed = sqrt(pow(data.vel_gps[0], 2) +pow(data.vel_gps[1],2));
-    mavlink_msg_gps_raw_int_send(RADIO_COMM_CHANNEL, data.time_boot_ms*1000,
+    mavlink_msg_gps_raw_int_send(RADIO_COMM_CHANNEL, data.time_gps_ms*1000,
                                  3, data.lat_gps, data.lon_gps, data.alt_gps,
-                                 UINT16_MAX, UINT16_MAX, gps_hspeed,
+                                 UINT16_MAX, UINT16_MAX, data.speed_gps,
                                  data.hdg_gps * 180 / M_PI / 10, 255);
   }
 
   if (telemetry_downsample.pressure_raw && 
       ticks % telemetry_downsample.pressure_raw == 0) {
-    mavlink_msg_raw_pressure_send(RADIO_COMM_CHANNEL, data.time_boot_ms,
+    mavlink_msg_raw_pressure_send(RADIO_COMM_CHANNEL, data.time_gps_ms,
                                   data.stat_press, data.dyn_press, 0, 0);
   }
 
   if (telemetry_downsample.attitude && 
       ticks % telemetry_downsample.attitude == 0) {
-    mavlink_msg_attitude_send(RADIO_COMM_CHANNEL, data.time_boot_ms,
+    mavlink_msg_attitude_send(RADIO_COMM_CHANNEL, data.time_gps_ms,
                               data.att_est[0], data.att_est[1], data.att_est[2],
                               0, 0, 0);
   }

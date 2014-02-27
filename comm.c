@@ -38,8 +38,7 @@
 #endif // not RADIO_STREAM_PATH
 
 #ifndef SENSOR_HEAD_STREAM_PATH
-//#define SENSOR_HEAD_STREAM_PATH "/dev/spidev1.1"
-#define SENSOR_HEAD_STREAM_PATH "/tmp/sensor-head" //####################
+#define SENSOR_HEAD_STREAM_PATH "/dev/spidev1.1"
 ///< File path of the SENSOR_HEAD_COMM_CHANNEL
 #endif // not SENSOR_HEAD_STREAM_PATH
 

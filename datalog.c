@@ -145,8 +145,6 @@ datalog_init(datalog_t *log) {
           "acc0\tacc1\tacc2\t"
           "gyro0\tgyro1\tgyro2\tg_temp\t"
           "mag0\tmag1\tmag2\t"
-          "adc0\tadc1\tadc2\tadc3\tadc4\tadc5\tadc6\tadc7\t"
-          "adc8\tadc9\tadc10\tadc11\tadc12\tadc13\tadc14\tadc15\t"
           "dyn_p\tstat_p\n");
 
   //Create the attitude log file
@@ -179,7 +177,8 @@ datalog_init(datalog_t *log) {
           "time\t"
           "lat\tlon\talt\t"
           "hdg\t"
-          "vel0\tvel1\tvel2\n");
+          "speed\t"
+          "posfix\tnosv\thdop\n");
 
   //Create the control log file
   snprintf(filename, MAX_LENGTH, "%s/%03d/control",
@@ -267,13 +266,12 @@ void datalog_alarm_handler(union sigval arg) {
   if (pdva_config.downsample.sensor.M &&
       ticks % pdva_config.downsample.sensor.M == 0)
     fprintf(datalog.sensor,
-          "%u\t"
-          "%u\t%u\t%u\t"
-          "%u\t%u\t%u\t%u\t"
-          "%u\t%u\t%u\t"
-          "%u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\t"
-          "%u\t%u\n",
-          sensor_data.time_boot_ms,
+          "%d\t"
+          "%d\t%d\t%d\t"
+          "%d\t%d\t%d\t%d\t"
+          "%d\t%d\t%d\t"
+          "%d\t%d\n",
+          sensor_data.time_gps_ms,
 
           sensor_data.acc[0], sensor_data.acc[1], sensor_data.acc[2],
 
@@ -282,24 +280,17 @@ void datalog_alarm_handler(union sigval arg) {
 
           sensor_data.mag[0], sensor_data.mag[1], sensor_data.mag[2],
 
-          sensor_data.adc[0], sensor_data.adc[1], sensor_data.adc[2],
-          sensor_data.adc[3], sensor_data.adc[4], sensor_data.adc[5],
-          sensor_data.adc[6], sensor_data.adc[7], sensor_data.adc[8],
-          sensor_data.adc[9], sensor_data.adc[10], sensor_data.adc[11],
-          sensor_data.adc[12], sensor_data.adc[13], sensor_data.adc[14],
-          sensor_data.adc[15],
-
           sensor_data.dyn_press, sensor_data.stat_press);
 
   //Write attitude file
   if (pdva_config.downsample.attitude.M &&
       ticks % pdva_config.downsample.attitude.M == 0)
     fprintf(datalog.attitude,
-          "%u\t"
-          "%d\t%d\t%d\t"
+          "%d\t"
+          "%f\t%f\t%f\t"
           "%u\t"
           "%d\n",
-          sensor_data.time_boot_ms,
+          sensor_data.time_gps_ms,
 
           sensor_data.att_est[0], sensor_data.att_est[1],
           sensor_data.att_est[2],
@@ -312,26 +303,28 @@ void datalog_alarm_handler(union sigval arg) {
   if (pdva_config.downsample.gps.M &&
       ticks % pdva_config.downsample.gps.M == 0)
     fprintf(datalog.gps,
-          "%u\t"
+          "%d\t"
           "%d\t%d\t%d\t"
           "%d\t"
+          "%u\t"
           "%d\t%d\t%d\n",
-          sensor_data.time_boot_ms,
+          sensor_data.time_gps_ms,
 
           sensor_data.lat_gps, sensor_data.lon_gps, sensor_data.alt_gps,
 
           sensor_data.hdg_gps,
 
-          sensor_data.vel_gps[0], sensor_data.vel_gps[1],
-          sensor_data.vel_gps[2]);
+          sensor_data.speed_gps,
+
+          sensor_data.pos_fix_gps, sensor_data.nosv_gps, sensor_data.hdop_gps);
 
   //Write control file
   if (pdva_config.downsample.control.M &&
       ticks % pdva_config.downsample.control.M == 0)
     fprintf(datalog.control,
-          "%u\t"
+          "%d\t"
           "%u\t%u\t%u\t%u\n",
-          sensor_data.time_boot_ms,
+          sensor_data.time_gps_ms,
 
           control_out.aileron, control_out.elevator,
           control_out.throttle, control_out.rudder);
@@ -470,10 +463,8 @@ void data_to_filter(mavlink_sensor_head_data_t * sensor_data,
   var_sensor[6] = (double) sensor_data->gyro_temp;
   for(i=0;i<3;++i)
     var_sensor[7+i] = (double) sensor_data->mag[i];
-  for(i=0;i<16;++i)
-    var_sensor[10+i] = (double) sensor_data->adc[i];
-  var_sensor[26] = (double) sensor_data->dyn_press;
-  var_sensor[27] = (double) sensor_data->stat_press;
+  var_sensor[10] = (double) sensor_data->dyn_press;
+  var_sensor[11] = (double) sensor_data->stat_press;
 
   for(i=0;i<3;++i)
     var_attitude[i] = (double) sensor_data->att_est[i];
@@ -484,8 +475,10 @@ void data_to_filter(mavlink_sensor_head_data_t * sensor_data,
   var_gps[1] = (double) sensor_data->lon_gps;
   var_gps[2] = (double) sensor_data->alt_gps;
   var_gps[3] = (double) sensor_data->hdg_gps;
-  for(i=0;i<3;++i)
-    var_gps[4+i] = (double) sensor_data->vel_gps[i];
+  var_gps[4] = (double) sensor_data->speed_gps;
+  var_gps[5] = (double) sensor_data->pos_fix_gps;
+  var_gps[6] = (double) sensor_data->nosv_gps;
+  var_gps[7] = (double) sensor_data->hdop_gps;
 
   var_control[0] = (double) control_out->aileron;
   var_control[1] = (double) control_out->elevator;
@@ -502,19 +495,17 @@ void filter_to_data(mavlink_sensor_head_data_t * sensor_data,
   int i;
 
   for(i=0;i<3;++i)
-    sensor_data->acc[i] = (unsigned short) var_sensor[i];
+    sensor_data->acc[i] = (int) var_sensor[i];
   for(i=0;i<3;++i)
-    sensor_data->gyro[i] = (unsigned short) var_sensor[3+i];
-  sensor_data->gyro_temp = (unsigned short) var_sensor[6];
+    sensor_data->gyro[i] = (int) var_sensor[3+i];
+  sensor_data->gyro_temp = (short) var_sensor[6];
   for(i=0;i<3;++i)
-    sensor_data->mag[i] = (unsigned short) var_sensor[7+i];
-  for(i=0;i<16;++i)
-    sensor_data->adc[i] = (unsigned short) var_sensor[10+i];
-  sensor_data->dyn_press = (unsigned) var_sensor[26];
-  sensor_data->stat_press = (unsigned) var_sensor[27];
+    sensor_data->mag[i] = (int) var_sensor[7+i];
+  sensor_data->dyn_press = (int) var_sensor[10];
+  sensor_data->stat_press = (int) var_sensor[11];
 
   for(i=0;i<3;++i)
-    sensor_data->att_est[i] = (short) var_attitude[i];
+    sensor_data->att_est[i] = (float) var_attitude[i];
   sensor_data->airspeed = (unsigned) var_attitude[3];
   sensor_data->altitude = (int) var_attitude[4];
 
@@ -522,8 +513,11 @@ void filter_to_data(mavlink_sensor_head_data_t * sensor_data,
   sensor_data->lon_gps = (int) var_gps[1];
   sensor_data->alt_gps = (int) var_gps[2];
   sensor_data->hdg_gps = (short) var_gps[3];
-  for(i=0;i<3;++i)
-    sensor_data->vel_gps[i] = (short) var_gps[4+i];
+  sensor_data->speed_gps = (unsigned short) var_gps[4];
+  sensor_data->pos_fix_gps = (char) var_gps[5];
+  sensor_data->nosv_gps = (char) var_gps[6];
+  sensor_data->hdop_gps = (short) var_gps[7];
+
 
   control_out->aileron = (unsigned) var_control[0];
   control_out->elevator = (unsigned) var_control[1];

@@ -284,7 +284,7 @@ printf("Mensagem recebida\n");
 				       control_out.aileron,
 				       control_out.elevator,
 				       control_out.throttle,
-				       control_out.rudder, 0, 0, 0, 0);
+				       control_out.rudder);
 
 
   printf("Writing commands: %d,%d,%d,%d\n",control_out.aileron,control_out.elevator,control_out.throttle,control_out.rudder);

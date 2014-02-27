@@ -23,9 +23,9 @@ extern "C" {
 /// Maximum length for the path string
 #define MAX_LENGTH 50
 /// Number of variables for each file
-#define NUM_VAR_SENSOR   28
+#define NUM_VAR_SENSOR   12
 #define NUM_VAR_ATTITUDE 5
-#define NUM_VAR_GPS      7
+#define NUM_VAR_GPS      8
 #define NUM_VAR_CONTROL  4
 
 
