@@ -278,7 +278,7 @@ printf("Mensagem recebida\n");
     syslog(LOG_ERR, "Error unlocking mutex: %m (%s)%d",
 	   __FILE__, __LINE__);
   }
-
+control_out.aileron=11;control_out.elevator=13;control_out.throttle=17;control_out.rudder=19;///////////////*****************
   //Write control action to the sensor head
   mavlink_msg_sensor_head_command_send(SENSOR_HEAD_COMM_CHANNEL,
 				       control_out.aileron,

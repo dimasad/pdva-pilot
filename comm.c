@@ -27,13 +27,13 @@
 /* *** Macros *** */
 
 #ifndef FAKE_SPI
-#define FAKE_SPI //###########################################################
+//#define FAKE_SPI
 ///< For tests which do not use SPI interface.
 #endif // not FAKE_SPI
 
 #ifndef RADIO_STREAM_PATH
 //#define RADIO_STREAM_PATH "/dev/ttyS2"
-#define RADIO_STREAM_PATH "/tmp/my_empty_file"
+#define RADIO_STREAM_PATH "/home/rafael/my_empty_file" //////////////////////
 ///< File path of the RADIO_COMM_CHANNEL.
 #endif // not RADIO_STREAM_PATH
 
@@ -59,7 +59,7 @@ static uint8_t sensor_head_send_buffer[MAVLINK_MAX_PACKET_LEN];
 
 static mavlink_message_handler_t msg_handlers[256];
 ///< Array with all registered message handlers, indexed by msgid.
-
+uint32_t max_speed_hz;
 
 /* *** Prototypes *** */
 
@@ -151,18 +151,19 @@ sensor_head_read(mavlink_sensor_head_data_t *payload) {
   //Decode message
   mavlink_message_t msg;
   mavlink_status_t status;
-  
+  printf("Message received at read() len=%d\n",len);
   //Parse the data
-  for (int i = 0; i < sizeof buf; i++)
+  for (int i = 0; i < sizeof buf; i++){if(i%10==0)printf("\n");printf("%d,",buf[i]);
     if(mavlink_parse_char(SENSOR_HEAD_COMM_CHANNEL, buf[i], &msg, &status)){
         //Retrieve the message payload and return
         mavlink_msg_sensor_head_data_decode(&msg, payload);
         return STATUS_SUCCESS;
     }
-
-    syslog(LOG_DEBUG, "Could not decode message from sensor head (%s)%d",
-	   __FILE__, __LINE__);
-    return STATUS_FAILURE;
+  }
+  printf("\nEnd of message\n");
+  syslog(LOG_DEBUG, "Could not decode message from sensor head (%s)%d",
+	 __FILE__, __LINE__);
+  return STATUS_SUCCESS;//return STATUS_FAILURE; ///////////*************
   
 }
 
@@ -179,15 +180,13 @@ ret_status_t setup_comm() {
   fcntl(radio, F_SETFL, O_NONBLOCK);
 
   //Open sensor head stream
-  sensor_head = open(SENSOR_HEAD_STREAM_PATH, O_RDWR);
+  sensor_head = open(SENSOR_HEAD_STREAM_PATH, O_RDWR | O_NONBLOCK); ///////////////////********
   if (sensor_head < 0) {
     syslog(LOG_ERR, "Error opening SENSOR_HEAD_COMM_CHANNEL stream at `%s': %m "
 	   "(%s)%d", SENSOR_HEAD_STREAM_PATH, __FILE__, __LINE__);    
     return STATUS_FAILURE;
   }
 
-  //Set sensor_head stream for nonblocking operation
-  fcntl(sensor_head, F_SETFL, O_NONBLOCK);
   
 #ifndef FAKE_SPI
 
@@ -207,8 +206,11 @@ ret_status_t setup_comm() {
     syslog(LOG_ERR, "Error setting SPI port bits per word: %m (%s)%d",
 	   __FILE__, __LINE__);
   
-  uint32_t max_speed_hz = SPI_MAX_SPEED_HZ;
-  if (ioctl(sensor_head, SPI_IOC_WR_MODE, &max_speed_hz))
+//  uint32_t max_speed_hz = SPI_MAX_SPEED_HZ;
+printf("\nEnter SPI frequency (Hz): ");
+scanf("%u", &max_speed_hz);
+printf("Frequency %u Hz.\n", max_speed_hz);
+  if (ioctl(sensor_head, SPI_IOC_WR_MAX_SPEED_HZ, &max_speed_hz))
     syslog(LOG_ERR, "Error setting SPI port maximum speed: %m (%s)%d",
 	   __FILE__, __LINE__);
 
@@ -288,6 +290,7 @@ static inline void
 mavlink_end_uart_send(mavlink_channel_t chan, size_t len) {
   if (chan == SENSOR_HEAD_COMM_CHANNEL && len == sensor_head_send_count) {
     ssize_t written = write(sensor_head, sensor_head_send_buffer, len);
+    printf("\nWrote %d bytes to sensor-head!!!\n", (int)written);
   }
 }
 

@@ -495,18 +495,18 @@ void filter_to_data(mavlink_sensor_head_data_t * sensor_data,
   int i;
 
   for(i=0;i<3;++i)
-    sensor_data->acc[i] = (int) var_sensor[i];
+    sensor_data->acc[i] = (short) var_sensor[i];
   for(i=0;i<3;++i)
-    sensor_data->gyro[i] = (int) var_sensor[3+i];
+    sensor_data->gyro[i] = (short) var_sensor[3+i];
   sensor_data->gyro_temp = (short) var_sensor[6];
   for(i=0;i<3;++i)
-    sensor_data->mag[i] = (int) var_sensor[7+i];
-  sensor_data->dyn_press = (int) var_sensor[10];
-  sensor_data->stat_press = (int) var_sensor[11];
+    sensor_data->mag[i] = (short) var_sensor[7+i];
+  sensor_data->dyn_press = (short) var_sensor[10];
+  sensor_data->stat_press = (short) var_sensor[11];
 
   for(i=0;i<3;++i)
     sensor_data->att_est[i] = (float) var_attitude[i];
-  sensor_data->airspeed = (unsigned) var_attitude[3];
+  sensor_data->airspeed = (unsigned short) var_attitude[3];
   sensor_data->altitude = (int) var_attitude[4];
 
   sensor_data->lat_gps = (int) var_gps[0];
@@ -514,8 +514,8 @@ void filter_to_data(mavlink_sensor_head_data_t * sensor_data,
   sensor_data->alt_gps = (int) var_gps[2];
   sensor_data->hdg_gps = (short) var_gps[3];
   sensor_data->speed_gps = (unsigned short) var_gps[4];
-  sensor_data->pos_fix_gps = (char) var_gps[5];
-  sensor_data->nosv_gps = (char) var_gps[6];
+  sensor_data->pos_fix_gps = (short) var_gps[5];
+  sensor_data->nosv_gps = (short) var_gps[6];
   sensor_data->hdop_gps = (short) var_gps[7];
 
 
