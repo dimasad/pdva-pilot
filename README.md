@@ -201,11 +201,14 @@ The available parameters are
 	long datalog_timer_period_ns;
 	int downsample_%s;
 (where %s is the name of the datalog file)
+
 	int filter_%s_n;
 (where %s is the name of the datalog file)
+
 	double filter_%s_a_%d; 
 (where %s is the name of the datalog file and
 %d is the index for the denominator)
+
 	double filter_%s_b_%d; 
 (where %s is the name of the datalog file and
 %d is the index for the numerator)
@@ -231,6 +234,7 @@ A low-pass digital filter can be implemented for each file. The order of the
 filter and its coefficients can be set up in the configuration file.
 
 For example, the parameters
+
 	filter_sensor_n = 1;
 	filter_sensor_a_0 = 1.0;
 	filter_sensor_a_1 = -0.1;
@@ -256,4 +260,5 @@ scheduling policy and priority of each thread.
 ### Authors
 
 Project started by Dimas Abreu Dutra and continued by Rafael Tupynamba Dutra.
+
 Universidade Federal de Minas Gerais.
