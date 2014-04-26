@@ -111,7 +111,7 @@ static double altitude = 0;
 static double airspeed = 0;
 
 /// Control output
-static control_out_t control_out =
+static mavlink_sensor_head_command_t control_out =
        {.aileron = 0, .elevator = 0, .throttle = 0, .rudder = 0};
 
 
@@ -148,7 +148,7 @@ unsigned control_loop_ticks() {
 
 void
 get_sensor_and_control_data(
-       mavlink_sensor_head_data_t *sensor, control_out_t *control) {
+       mavlink_sensor_head_data_t *sensor, mavlink_sensor_head_command_t *control) {
 
   //Block all signals
   sigset_t oldmask, newmask;
@@ -165,7 +165,7 @@ get_sensor_and_control_data(
   memcpy(sensor, &sensor_head_data, sizeof(mavlink_sensor_head_data_t));
 
   //Get the control data
-  memcpy(control, &control_out, sizeof(control_out_t));
+  memcpy(control, &control_out, sizeof(mavlink_sensor_head_command_t));
 
   //Unlock mutex
   if (pthread_mutex_unlock(&mutex)) {
@@ -255,8 +255,8 @@ alarm_handler(int signum, siginfo_t *info, void *context) {
   //Increment the tick counter
   ticks++;
   
-  //Get readings from sensor head
-  if (sensor_head_read(&sensor_head_data)) {
+  //Communicate with sensor head
+  if (sensor_head_read_write(&sensor_head_data, &control_out)) {
     //How to proceed when failed to obtain sensor head measurements?
     //Unlock mutex
     if (pthread_mutex_unlock(&mutex)) {
@@ -278,16 +278,6 @@ printf("Mensagem recebida\n");
     syslog(LOG_ERR, "Error unlocking mutex: %m (%s)%d",
 	   __FILE__, __LINE__);
   }
-control_out.aileron=11;control_out.elevator=13;control_out.throttle=17;control_out.rudder=19;///////////////*****************
-  //Write control action to the sensor head
-  mavlink_msg_sensor_head_command_send(SENSOR_HEAD_COMM_CHANNEL,
-				       control_out.aileron,
-				       control_out.elevator,
-				       control_out.throttle,
-				       control_out.rudder);
-
-
-  printf("Writing commands: %d,%d,%d,%d\n",control_out.aileron,control_out.elevator,control_out.throttle,control_out.rudder);
 }
 
 static inline void 

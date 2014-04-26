@@ -127,13 +127,41 @@ radio_register_handler(uint8_t msgid, mavlink_message_handler_t handler) {
 }
 
 ret_status_t
-sensor_head_read(mavlink_sensor_head_data_t *payload) {
+sensor_head_read_write(mavlink_sensor_head_data_t *payload,
+                       mavlink_sensor_head_command_t *control_out) {
   //Read data from SENSOR_HEAD_COMM_CHANNEL
-  uint8_t buf[MAVLINK_MSG_ID_SENSOR_HEAD_DATA_LEN 
-	      + MAVLINK_NUM_NON_PAYLOAD_BYTES];
+  uint8_t rx[MAVLINK_MSG_ID_SENSOR_HEAD_DATA_LEN
+	      + MAVLINK_NUM_NON_PAYLOAD_BYTES + 1],
+          tx[MAVLINK_MSG_ID_SENSOR_HEAD_DATA_LEN
+	      + MAVLINK_NUM_NON_PAYLOAD_BYTES + 1];
+  mavlink_message_t msg_out;
+
+  memset(rx, 0, sizeof rx);
+  memset(tx, 0, sizeof tx);
+  memset(&msg_out, 0, sizeof msg_out);
+
+  uint16_t bytes = mavlink_msg_sensor_head_command_pack_chan(
+        mavlink_system.sysid, mavlink_system.compid, SENSOR_HEAD_COMM_CHANNEL,
+	&msg_out,
+	control_out->aileron, control_out->elevator,
+        control_out->throttle, control_out->rudder);
+
+  bytes = mavlink_msg_to_send_buffer(tx, &msg_out);
+
+  struct spi_ioc_transfer tr;
+  memset(&tr, 0, sizeof tr);
+
+  tr.tx_buf = (unsigned long)tx;
+  tr.rx_buf = (unsigned long)rx;
+  tr.len = MAVLINK_MSG_ID_SENSOR_HEAD_DATA_LEN
+	      + MAVLINK_NUM_NON_PAYLOAD_BYTES + 1;
+  tr.delay_usecs = 0;
+  tr.speed_hz = max_speed_hz;
+  tr.bits_per_word = 8;
+
   mavlink_reset_channel_status(SENSOR_HEAD_COMM_CHANNEL);
 
-  ssize_t len = read(sensor_head, &buf, sizeof buf);
+  int len = ioctl(sensor_head, SPI_IOC_MESSAGE(1), &tr);
 
   //Check if read successful
   if (len < 0) {
@@ -142,7 +170,7 @@ sensor_head_read(mavlink_sensor_head_data_t *payload) {
     return STATUS_FAILURE;
   }
 
-  if (len < sizeof buf) {
+  if (len < sizeof rx) {
     syslog(LOG_DEBUG, "Packet from sensor head too small (%s)%d",
 	   __FILE__, __LINE__);
     return STATUS_FAILURE;
@@ -153,10 +181,11 @@ sensor_head_read(mavlink_sensor_head_data_t *payload) {
   mavlink_status_t status;
   printf("Message received at read() len=%d\n",len);
   //Parse the data
-  for (int i = 0; i < sizeof buf; i++){if(i%10==0)printf("\n");printf("%d,",buf[i]);
-    if(mavlink_parse_char(SENSOR_HEAD_COMM_CHANNEL, buf[i], &msg, &status)){
+  for (int i = 0; i < sizeof rx; i++){if(i%10==0)printf("\n");printf("%d,",rx[i]);
+    if(mavlink_parse_char(SENSOR_HEAD_COMM_CHANNEL, rx[i], &msg, &status)){
         //Retrieve the message payload and return
         mavlink_msg_sensor_head_data_decode(&msg, payload);
+        printf("\nx %d, y %d, z %d\n", payload->acc[0], payload->acc[1], payload->acc[2]);
         return STATUS_SUCCESS;
     }
   }

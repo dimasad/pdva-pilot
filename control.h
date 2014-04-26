@@ -21,14 +21,6 @@
 
 /* *** Types *** */
 
-/// Control data structure.
-typedef struct {
-  unsigned aileron;
-  unsigned elevator;
-  unsigned throttle;
-  unsigned rudder;
-} control_out_t;
-
 enum control_configuration {
   ALTITUDE_FROM_POWER = 0,
   ALTITUDE_FROM_PITCH = 1
@@ -41,7 +33,8 @@ unsigned control_loop_ticks();
 
 /// Get the latest sensor head and control data available.
 void get_sensor_and_control_data(
-       mavlink_sensor_head_data_t *sensor, control_out_t *control);
+       mavlink_sensor_head_data_t *sensor,
+       mavlink_sensor_head_command_t *control);
 
 /// Setup the control module.
 ret_status_t setup_control();

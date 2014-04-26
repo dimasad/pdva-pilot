@@ -44,7 +44,8 @@ radio_register_handler(uint8_t msgid, mavlink_message_handler_t handler);
 
 /// Get sensor head data from SENSOR_HEAD_COMM_CHANNEL.
 ret_status_t
-sensor_head_read(mavlink_sensor_head_data_t*);
+sensor_head_read_write(mavlink_sensor_head_data_t*,
+                       mavlink_sensor_head_command_t*);
 
 /// Setup the communication module.
 ret_status_t

@@ -37,7 +37,7 @@ static timer_t datalog_timer;
 static mavlink_sensor_head_data_t sensor_data;
 
 /// Local copy of the control output.
-static control_out_t control_out;
+static mavlink_sensor_head_command_t control_out;
 
 /// Low-pass filter structures.
 filter_t filter_sensor, filter_attitude, filter_gps, filter_control;
@@ -452,7 +452,7 @@ filter_update(filter_t *f, double *x){
 
 /// Convert sensor head and control data to double arrays for filtering
 void data_to_filter(mavlink_sensor_head_data_t * sensor_data,
-       control_out_t * control_out, double * var_sensor,
+       mavlink_sensor_head_command_t * control_out, double * var_sensor,
        double * var_attitude, double * var_gps, double * var_control){
   int i;
 
@@ -489,7 +489,7 @@ void data_to_filter(mavlink_sensor_head_data_t * sensor_data,
 
 /// Convert double arrays back to sensor head and control data.
 void filter_to_data(mavlink_sensor_head_data_t * sensor_data,
-       control_out_t * control_out, double * var_sensor,
+       mavlink_sensor_head_command_t * control_out, double * var_sensor,
        double * var_attitude, double * var_gps, double * var_control){
 
   int i;

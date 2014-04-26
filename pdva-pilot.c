@@ -303,7 +303,7 @@ void
 telemetry_send_all() {
   //Get the sensor data and tick count
   mavlink_sensor_head_data_t data;
-  control_out_t control_data;
+  mavlink_sensor_head_command_t control_data;
   get_sensor_and_control_data(&data, &control_data);
   unsigned ticks = control_loop_ticks();
   
