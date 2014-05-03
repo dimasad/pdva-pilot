@@ -30,6 +30,9 @@ static inline void calculate_control();
 
 /* *** Variables *** */
 
+/// Configuration structure.
+extern pdva_pilot_config_t pdva_config;
+
 /// Mutex used to protect the internal variables
 pthread_mutex_t mutex;
 
@@ -180,13 +183,16 @@ get_sensor_and_control_data(
 
 ret_status_t 
 setup_control() {
+  double control_timer_period = pdva_config.control_timer_period.tv_sec
+                              +pdva_config.control_timer_period.tv_nsec / 1e9;
+
   //Initialize the pid controllers
-  pid_init(&aileron_pid, 0, 1, 1, 0, 0, CONTROL_TIMER_PERIOD_S);
-  pid_init(&elevator_pid, 0, 1, 1, 0, 0, CONTROL_TIMER_PERIOD_S);
-  pid_init(&throttle_pid, 0, 1, 1, 0, 0, CONTROL_TIMER_PERIOD_S);
-  pid_init(&rudder_pid, 0, 1, 1, 0, 0, CONTROL_TIMER_PERIOD_S);
-  pid_init(&roll_pid, -M_PI_2, M_PI_2, 1, 0, 0, CONTROL_TIMER_PERIOD_S);
-  pid_init(&pitch_pid, -M_PI_2, M_PI_2, 1, 0, 0, CONTROL_TIMER_PERIOD_S);
+  pid_init(&aileron_pid, 0, 1, 1, 0, 0, control_timer_period);
+  pid_init(&elevator_pid, 0, 1, 1, 0, 0, control_timer_period);
+  pid_init(&throttle_pid, 0, 1, 1, 0, 0, control_timer_period);
+  pid_init(&rudder_pid, 0, 1, 1, 0, 0, control_timer_period);
+  pid_init(&roll_pid, -M_PI_2, M_PI_2, 1, 0, 0, control_timer_period);
+  pid_init(&pitch_pid, -M_PI_2, M_PI_2, 1, 0, 0, control_timer_period);
   
   //Setup the interrupt handler
   struct sigaction alarm_action;
@@ -215,10 +221,10 @@ setup_control() {
 ret_status_t
 start_control() {
   struct itimerspec timer_spec;
-  timer_spec.it_interval.tv_sec = 0;
-  timer_spec.it_value.tv_sec = 0;
-  timer_spec.it_interval.tv_nsec = CONTROL_TIMER_PERIOD_NS;
-  timer_spec.it_value.tv_nsec = CONTROL_TIMER_PERIOD_NS;
+  timer_spec.it_interval.tv_sec = pdva_config.control_timer_period.tv_sec;
+  timer_spec.it_value.tv_sec = pdva_config.control_timer_period.tv_sec;
+  timer_spec.it_interval.tv_nsec = pdva_config.control_timer_period.tv_nsec;
+  timer_spec.it_value.tv_nsec = pdva_config.control_timer_period.tv_nsec;
   
   if (timer_settime(timer, 0, &timer_spec, NULL)) {
     syslog(LOG_ERR, "Error setting control loop timer: %m (%s)%d.",

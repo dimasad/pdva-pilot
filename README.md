@@ -197,6 +197,8 @@ program execution.
 The available parameters are
 
 	uint8_t sysid;
+	time_t control_timer_period_s;
+	long control_timer_period_ns;
 	time_t datalog_timer_period_s;
 	long datalog_timer_period_ns;
 	int downsample_%s;
@@ -245,7 +247,8 @@ create a filter for the sensor file with order 1 given by the
 difference equation y[k] = 0.1y[k-1] + 0.9x[k].
 
 When the variables are not set in the configuration files, they use default
-values: the datalog_timer_period_ns uses the same value as the
+values: the datalog_timer_period_ns
+and the control_timer_period_ns use the value
 CONTROL_TIMER_PERIOD_NS, all the downsample factors are set to 1 and no
 low-pass filter is used. More precisely, the filters are set to y[k] = x[k],
 (transfer function 1).

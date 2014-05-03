@@ -17,7 +17,6 @@
 ///< Period of the control loop in nanosecods.
 #endif // not CONTROL_TIMER_PERIOD_NS
 
-#define CONTROL_TIMER_PERIOD_S (CONTROL_TIMER_PERIOD_NS / 1e9)
 
 /* *** Types *** */
 

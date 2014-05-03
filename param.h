@@ -45,6 +45,7 @@ typedef struct {
 
 /// Configuration structure of the pdva-pilot instance.
 typedef struct {
+  struct timespec control_timer_period;
   struct timespec datalog_timer_period;
   datalog_downsample_t downsample;
   uint8_t sysid;
