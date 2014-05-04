@@ -95,18 +95,6 @@ static double altitude_ref = 0;
 /// Airspeed reference (setpoint).
 static double airspeed_ref = 0;
 
-/// Aileron output
-static double aileron_out = 0;
-
-/// Elevator output
-static double elevator_out = 0;
-
-/// Throttle output
-static double throttle_out = 0;
-
-/// Rudder output
-static double rudder_out = 0;
-
 /// Altitude in meters above mean sea level
 static double altitude = 0;
 
@@ -117,6 +105,17 @@ static double airspeed = 0;
 static mavlink_sensor_head_command_t control_out =
        {.aileron = 0, .elevator = 0, .throttle = 0, .rudder = 0};
 
+/// Sensor variables
+static sensor_t sensor;
+
+/// Attitude variables
+static attitude_t attitude;
+
+/// GPS variables
+static gps_t gps;
+
+/// Control variables
+static control_t control;
 
 
 /* *** Public functions *** */
@@ -149,9 +148,51 @@ unsigned control_loop_ticks() {
   return ret;
 }
 
-void
-get_sensor_and_control_data(
-       mavlink_sensor_head_data_t *sensor, mavlink_sensor_head_command_t *control) {
+/// Get the latest sensor head and control data for datalog.
+void get_datalog_data(
+       sensor_t *sensor_data, attitude_t *attitude_data, gps_t *gps_data,
+       control_t *control_data, double *time_gps) {
+
+  //Block all signals
+  sigset_t oldmask, newmask;
+  sigfillset(&newmask);
+  sigprocmask(SIG_SETMASK, &newmask, &oldmask);
+
+  //Lock mutex
+  if (pthread_mutex_lock(&mutex)) {
+    syslog(LOG_ERR, "Error locking mutex: %m (%s)%d",
+	   __FILE__, __LINE__);
+  }
+
+  //Get the sensor data
+  memcpy(sensor_data, &sensor, sizeof(sensor_t));
+
+  //Get the attitude data
+  memcpy(attitude_data, &attitude, sizeof(attitude_t));
+
+  //Get the GPS data
+  memcpy(gps_data, &gps, sizeof(gps_t));
+
+  //Get the control data
+  memcpy(control_data, &control, sizeof(control_t));
+
+  //Get time
+  *time_gps = sensor_head_data.time_gps_ms / 1e3;
+
+  //Unlock mutex
+  if (pthread_mutex_unlock(&mutex)) {
+    syslog(LOG_ERR, "Error unlocking mutex: %m (%s)%d",
+	   __FILE__, __LINE__);
+  }
+
+  //Restore the signal mask
+  sigprocmask(SIG_SETMASK, &oldmask, NULL);  
+}
+
+/// Get the latest sensor head and control data for telemetry.
+void get_telemetry_data(
+       mavlink_sensor_head_data_t *data,
+       mavlink_sensor_head_command_t *control_data) {
 
   //Block all signals
   sigset_t oldmask, newmask;
@@ -165,10 +206,10 @@ get_sensor_and_control_data(
   }
 
   //Get the sensor head data
-  memcpy(sensor, &sensor_head_data, sizeof(mavlink_sensor_head_data_t));
+  memcpy(data, &sensor_head_data, sizeof(mavlink_sensor_head_data_t));
 
   //Get the control data
-  memcpy(control, &control_out, sizeof(mavlink_sensor_head_command_t));
+  memcpy(control_data, &control_out, sizeof(mavlink_sensor_head_command_t));
 
   //Unlock mutex
   if (pthread_mutex_unlock(&mutex)) {
@@ -179,7 +220,6 @@ get_sensor_and_control_data(
   //Restore the signal mask
   sigprocmask(SIG_SETMASK, &oldmask, NULL);  
 }
-
 
 ret_status_t 
 setup_control() {
@@ -273,11 +313,15 @@ alarm_handler(int signum, siginfo_t *info, void *context) {
 
   }
 
-
+  // Convert sensor head data to double format in SI units
+  sensor_head_data_convert(&sensor_head_data, &sensor, &attitude, &gps);
 printf("Mensagem recebida\n");
   
   //Calculate the control action
   calculate_control();
+
+  // Convert sensor head command from double format to PWM
+  sensor_head_command_convert(&control_out, &control);
 
   //Unlock mutex
   if (pthread_mutex_unlock(&mutex)) {
@@ -290,37 +334,121 @@ static inline void
 calculate_control() {
   switch (control_configuration) {
   case ALTITUDE_FROM_POWER:
-    throttle_out = pid_update(&throttle_pid,
-			      altitude_ref - sensor_head_data.altitude * 0.01);
+    control.throttle = pid_update(&throttle_pid,
+			      altitude_ref - attitude.altitude * 0.01);
     
     pitch_ref = pid_update(&pitch_pid,
-			   airspeed_ref - sensor_head_data.airspeed * 0.01);
+			   airspeed_ref - attitude.airspeed * 0.01);
     break;
   case ALTITUDE_FROM_PITCH:
     pitch_ref = pid_update(&pitch_pid,
-			   altitude_ref - sensor_head_data.altitude * 0.01);
+			   altitude_ref - attitude.altitude * 0.01);
     
-    throttle_out = pid_update(&throttle_pid,
-			      airspeed_ref - sensor_head_data.airspeed * 0.01);
+    control.throttle = pid_update(&throttle_pid,
+			      airspeed_ref - attitude.airspeed * 0.01);
     break;
   }
 
   roll_ref = pid_update(&roll_pid,
-			yaw_ref - sensor_head_data.att_est[2] * 0.001);
+			yaw_ref - attitude.att_est[2] * 0.001);
     
-  aileron_out = pid_update(&aileron_pid,
-			   roll_ref - sensor_head_data.att_est[0] * 0.001);
+  control.aileron = pid_update(&aileron_pid,
+			   roll_ref - attitude.att_est[0] * 0.001);
   
-  elevator_out = pid_update(&elevator_pid,
-			    pitch_ref - sensor_head_data.att_est[1] * 0.001);
-  elevator_out += fabs(roll_ref) * elevator_ff;
+  control.elevator = pid_update(&elevator_pid,
+			    pitch_ref - attitude.att_est[1] * 0.001);
+  control.elevator += fabs(roll_ref) * elevator_ff;
   
-  rudder_out = pid_update(&rudder_pid, - sensor_head_data.acc[1]);
-  rudder_out += aileron_out * rudder_ff;
+  control.rudder = pid_update(&rudder_pid, - sensor.acc[1]);
+  control.rudder += control.aileron * rudder_ff;
 
-  control_out.aileron = aileron_out * 65535;
-  control_out.elevator = elevator_out * 65535;
-  control_out.throttle = throttle_out * 65535;
-  control_out.rudder = rudder_out * 65535;
+}
+
+// Convert sensor head data to double format in SI units
+void sensor_head_data_convert(mavlink_sensor_head_data_t *data,
+        sensor_t *sensor_data, attitude_t *attitude_data, gps_t *gps_data) {
+  int i;
+
+  // Sensor variables
+  // acc
+  for(i=0;i<3;++i)
+    sensor_data->acc[i] = pdva_config.gain.sensor.acc[i] * data->acc[i]
+                       + pdva_config.offset.sensor.acc[i];
+  // gyro
+  for(i=0;i<3;++i)
+    sensor_data->gyro[i] = pdva_config.gain.sensor.gyro[i] * data->gyro[i]
+                        + pdva_config.offset.sensor.gyro[i];
+  // gyro_temp
+  sensor_data->gyro_temp = pdva_config.gain.sensor.gyro_temp * data->gyro_temp
+                        + pdva_config.offset.sensor.gyro_temp;
+  // mag
+  for(i=0;i<3;++i)
+    sensor_data->mag[i] = pdva_config.gain.sensor.mag[i] * data->mag[i]
+                       + pdva_config.offset.sensor.mag[i];
+  // dyn_press
+  sensor_data->dyn_press = pdva_config.gain.sensor.dyn_press * data->dyn_press
+                        + pdva_config.offset.sensor.dyn_press;
+  // stat_press
+  sensor_data->stat_press = pdva_config.gain.sensor.stat_press * data->stat_press
+                         + pdva_config.offset.sensor.stat_press;
+
+  // Attitude variables
+  // att_est
+  for(i=0;i<3;++i)
+    attitude_data->att_est[i] = pdva_config.gain.attitude.att_est[i] * data->att_est[i]
+                             + pdva_config.offset.attitude.att_est[i];
+  // airspeed
+  attitude_data->airspeed = pdva_config.gain.attitude.airspeed * data->airspeed
+                         + pdva_config.offset.attitude.airspeed;
+  // altitude
+  attitude_data->altitude = pdva_config.gain.attitude.altitude * data->altitude
+                         + pdva_config.offset.attitude.altitude;
+
+  // GPS variables
+  // lat_gps
+  gps_data->lat_gps = pdva_config.gain.gps.lat_gps * data->lat_gps
+                   + pdva_config.offset.gps.lat_gps;
+  // lon_gps
+  gps_data->lon_gps = pdva_config.gain.gps.lon_gps * data->lon_gps
+                   + pdva_config.offset.gps.lon_gps;
+  // alt_gps
+  gps_data->alt_gps = pdva_config.gain.gps.alt_gps * data->alt_gps
+                   + pdva_config.offset.gps.alt_gps;
+  // hdg_gps
+  gps_data->hdg_gps = pdva_config.gain.gps.hdg_gps * data->hdg_gps
+                   + pdva_config.offset.gps.hdg_gps;
+  // speed_gps
+  gps_data->speed_gps = pdva_config.gain.gps.speed_gps * data->speed_gps
+                     + pdva_config.offset.gps.speed_gps;
+  // pos_fix_gps
+  gps_data->pos_fix_gps = pdva_config.gain.gps.pos_fix_gps * data->pos_fix_gps
+                       + pdva_config.offset.gps.pos_fix_gps;
+  // nosv_gps
+  gps_data->nosv_gps = pdva_config.gain.gps.nosv_gps * data->nosv_gps
+                    + pdva_config.offset.gps.nosv_gps;
+  // hdop_gps
+  gps_data->hdop_gps = pdva_config.gain.gps.hdop_gps * data->hdop_gps
+                    + pdva_config.offset.gps.hdop_gps;
+
+}
+
+// Convert sensor head command from double format to PWM
+void sensor_head_command_convert(mavlink_sensor_head_command_t *data,
+        control_t *control_data) {
+
+  // Control variables
+  // aileron
+  data->aileron = pdva_config.gain.control.aileron * control_data->aileron
+               + pdva_config.offset.control.aileron;
+  // elevator
+  data->elevator = pdva_config.gain.control.elevator * control_data->elevator
+                + pdva_config.offset.control.elevator;
+  // throttle
+  data->throttle = pdva_config.gain.control.throttle * control_data->throttle
+                + pdva_config.offset.control.throttle;
+  // rudder
+  data->rudder = pdva_config.gain.control.rudder * control_data->rudder
+              + pdva_config.offset.control.rudder;
+
 }
 

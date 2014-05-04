@@ -34,10 +34,16 @@ static uint64_t ticks = 0;
 static timer_t datalog_timer;
 
 /// Local copy of the sensor data.
-static mavlink_sensor_head_data_t sensor_data;
+static sensor_t sensor;
+
+/// Local copy of the attitude data.
+static attitude_t attitude;
+
+/// Local copy of the GPS data.
+static gps_t gps;
 
 /// Local copy of the control output.
-static mavlink_sensor_head_command_t control_out;
+static control_t control;
 
 /// Low-pass filter structures.
 filter_t filter_sensor, filter_attitude, filter_gps, filter_control;
@@ -108,6 +114,12 @@ datalog_init(datalog_t *log) {
   log->sensor = log->attitude = log->gps =
   log->control = log->telecommand = NULL;
 
+  int i;
+  double control_timer_period = pdva_config.control_timer_period.tv_sec
+                              +pdva_config.control_timer_period.tv_nsec / 1e9;
+  double datalog_timer_period = pdva_config.datalog_timer_period.tv_sec
+                              +pdva_config.datalog_timer_period.tv_nsec / 1e9;
+
   //Create the datalog directory (if it doesn't already exist)
   mkdir(DATALOG_DIR, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
 
@@ -141,6 +153,39 @@ datalog_init(datalog_t *log) {
   }
 
   fprintf(log->sensor,
+          "%% Sensor log file\n"
+          "%% Experiment %d\n"
+          "%% Control Timer Period %f s\n"
+          "%% Datalog Timer Period %f s\n"
+          "%% Downsample factor %d (period %f s)\n"
+          "%% Filter order %d\n"
+          "%% Filter numerator coefficients:",
+          experiment, control_timer_period, datalog_timer_period,
+          pdva_config.downsample.sensor.M,
+          pdva_config.downsample.sensor.M * datalog_timer_period,
+          pdva_config.downsample.sensor.n);
+
+  for(i=0;i<=pdva_config.downsample.sensor.n;++i)
+    fprintf(log->sensor, " %f", pdva_config.downsample.sensor.b[i]);
+
+  fprintf(log->sensor,
+          "\n"
+          "%% Filter denominator coefficients:");
+
+  for(i=0;i<=pdva_config.downsample.sensor.n;++i)
+    fprintf(log->sensor, " %f", pdva_config.downsample.sensor.a[i]);
+
+  fprintf(log->sensor,
+          "\n"
+          "%% \n"
+          "%% Variables:\n"
+          "%% \n"
+          "%%   double acc[3]; ///< Accelerometer readings (m/s^2)\n"
+          "%%   double gyro[3]; ///< Gyrometer readings (rad/s)\n"
+          "%%   double gyro_temp; ///< Gyrometer temperature (K)\n"
+          "%%   double mag[3]; ///< Magnetometer readings (T)\n"
+          "%%   double dyn_press; ///< Dynamic pressure (Pa)\n"
+          "%%   double stat_press; ///< Static pressure (Pa)\n"
           "time\t"
           "acc0\tacc1\tacc2\t"
           "gyro0\tgyro1\tgyro2\tg_temp\t"
@@ -158,6 +203,36 @@ datalog_init(datalog_t *log) {
   }
 
   fprintf(log->attitude,
+          "%% Attitude log file\n"
+          "%% Experiment %d\n"
+          "%% Control Timer Period %f s\n"
+          "%% Datalog Timer Period %f s\n"
+          "%% Downsample factor %d (period %f s)\n"
+          "%% Filter order %d\n"
+          "%% Filter numerator coefficients:",
+          experiment, control_timer_period, datalog_timer_period,
+          pdva_config.downsample.attitude.M,
+          pdva_config.downsample.attitude.M * datalog_timer_period,
+          pdva_config.downsample.attitude.n);
+
+  for(i=0;i<=pdva_config.downsample.attitude.n;++i)
+    fprintf(log->attitude, " %f", pdva_config.downsample.attitude.b[i]);
+
+  fprintf(log->attitude,
+          "\n"
+          "%% Filter denominator coefficients:");
+
+  for(i=0;i<=pdva_config.downsample.attitude.n;++i)
+    fprintf(log->attitude, " %f", pdva_config.downsample.attitude.a[i]);
+
+  fprintf(log->attitude,
+          "\n"
+          "%% \n"
+          "%% Variables:\n"
+          "%% \n"
+          "%%   double att_est[3]; ///< Estimated attitude angles (roll, pitch, yaw in radians)\n"
+          "%%   double airspeed; ///< Airspeed (m/s)\n"
+          "%%   double altitude; ///< Altitude above sea level (m)\n"
           "time\t"
           "att0\tatt1\tatt2\t"
           "airsp\t"
@@ -174,6 +249,41 @@ datalog_init(datalog_t *log) {
   }
 
   fprintf(log->gps,
+          "%% GPS log file\n"
+          "%% Experiment %d\n"
+          "%% Control Timer Period %f s\n"
+          "%% Datalog Timer Period %f s\n"
+          "%% Downsample factor %d (period %f s)\n"
+          "%% Filter order %d\n"
+          "%% Filter numerator coefficients:",
+          experiment, control_timer_period, datalog_timer_period,
+          pdva_config.downsample.gps.M,
+          pdva_config.downsample.gps.M * datalog_timer_period,
+          pdva_config.downsample.gps.n);
+
+  for(i=0;i<=pdva_config.downsample.gps.n;++i)
+    fprintf(log->gps, " %f", pdva_config.downsample.gps.b[i]);
+
+  fprintf(log->gps,
+          "\n"
+          "%% Filter denominator coefficients:");
+
+  for(i=0;i<=pdva_config.downsample.gps.n;++i)
+    fprintf(log->gps, " %f", pdva_config.downsample.gps.a[i]);
+
+  fprintf(log->gps,
+          "\n"
+          "%% \n"
+          "%% Variables:\n"
+          "%% \n"
+          "%%   double lat_gps; ///< GPS latitude (deg)\n"
+          "%%   double lon_gps; ///< GPS longitude (deg)\n"
+          "%%   double alt_gps; ///< GPS altitude above MSL (m)\n"
+          "%%   double hdg_gps; ///< GPS heading (radians)\n"
+          "%%   double speed_gps; ///< GPS groundspeed (m/s)\n"
+          "%%   double pos_fix_gps; ///< GPS Position Fix Status\n"
+          "%%   double nosv_gps; ///< GPS Number of Satellites Used\n"
+          "%%   double hdop_gps; ///< GPS Horizontal Dilution of Precision\n"
           "time\t"
           "lat\tlon\talt\t"
           "hdg\t"
@@ -191,6 +301,37 @@ datalog_init(datalog_t *log) {
   }
 
   fprintf(log->control,
+          "%% Control log file\n"
+          "%% Experiment %d\n"
+          "%% Control Timer Period %f s\n"
+          "%% Datalog Timer Period %f s\n"
+          "%% Downsample factor %d (period %f s)\n"
+          "%% Filter order %d\n"
+          "%% Filter numerator coefficients:",
+          experiment, control_timer_period, datalog_timer_period,
+          pdva_config.downsample.control.M,
+          pdva_config.downsample.control.M * datalog_timer_period,
+          pdva_config.downsample.control.n);
+
+  for(i=0;i<=pdva_config.downsample.control.n;++i)
+    fprintf(log->control, " %f", pdva_config.downsample.control.b[i]);
+
+  fprintf(log->control,
+          "\n"
+          "%% Filter denominator coefficients:");
+
+  for(i=0;i<=pdva_config.downsample.control.n;++i)
+    fprintf(log->control, " %f", pdva_config.downsample.control.a[i]);
+
+  fprintf(log->control,
+          "\n"
+          "%% \n"
+          "%% Variables:\n"
+          "%% \n"
+          "%%   uint16_t aileron; ///< Aileron command, 0 to 65535\n"
+          "%%   uint16_t elevator; ///< Elevator command, 0 to 65535\n"
+          "%%   uint16_t throttle; ///< Throttle command, 0 to 65535\n"
+          "%%   uint16_t rudder; ///< Rudder command, 0 to 65535\n"
           "time\t"
           "aileron\televator\tthrottle\trudder\n");
 
@@ -205,8 +346,12 @@ datalog_init(datalog_t *log) {
   }
 
   fprintf(log->telecommand,
+          "%% Telecommand log file\n"
+          "%% Experiment %d\n"
+          "%% \n"
           "time\t"
-          "command\n");
+          "command\n",
+          experiment);
   
   //Write the number of the last experiment (current one)
   experiment_file = fopen(DATALOG_DIR "/last_experiment", "w");
@@ -222,19 +367,19 @@ datalog_init(datalog_t *log) {
 
   //Initialize filters
   filter_init(&filter_sensor, pdva_config.downsample.sensor.n,
-                              NUM_VAR_SENSOR,
+                              sizeof(sensor_t)/sizeof(double),
                               pdva_config.downsample.sensor.a,
                               pdva_config.downsample.sensor.b);
   filter_init(&filter_attitude, pdva_config.downsample.attitude.n,
-                                NUM_VAR_ATTITUDE,
+                                sizeof(attitude_t)/sizeof(double),
                                 pdva_config.downsample.attitude.a,
                                 pdva_config.downsample.attitude.b);
   filter_init(&filter_gps, pdva_config.downsample.gps.n,
-                           NUM_VAR_GPS,
+                           sizeof(gps_t)/sizeof(double),
                            pdva_config.downsample.gps.a,
                            pdva_config.downsample.gps.b);
   filter_init(&filter_control, pdva_config.downsample.control.n,
-                               NUM_VAR_CONTROL,
+                               sizeof(control_t)/sizeof(double),
                                pdva_config.downsample.control.a,
                                pdva_config.downsample.control.b);
 
@@ -242,89 +387,88 @@ datalog_init(datalog_t *log) {
 }
 
 void datalog_alarm_handler(union sigval arg) {
-  double var_sensor[NUM_VAR_SENSOR],
-         var_attitude[NUM_VAR_ATTITUDE],
-         var_gps[NUM_VAR_GPS],
-         var_control[NUM_VAR_CONTROL];
-  double *new_sensor, *new_attitude, *new_gps, *new_control;
+  mavlink_sensor_head_command_t control_out;
+  sensor_t *new_sensor;
+  attitude_t *new_attitude;
+  gps_t *new_gps;
+  control_t *new_control;
+  double time_gps;
 //printf("DatalogAlarm!!!\n");
   //Get the most recent data from the control thread
-  get_sensor_and_control_data(&sensor_data, &control_out);
+  get_datalog_data(&sensor, &attitude, &gps, &control, &time_gps);
 
-  data_to_filter(&sensor_data, &control_out,
-                 var_sensor, var_attitude, var_gps, var_control);
+  new_sensor = (sensor_t *) filter_update(&filter_sensor, (double *) &sensor);
+  new_attitude = (attitude_t *) filter_update(&filter_attitude, (double *) &attitude);
+  new_gps = (gps_t *) filter_update(&filter_gps, (double *) &gps);
+  new_control = (control_t *) filter_update(&filter_control, (double *) &control);
 
-  new_sensor = filter_update(&filter_sensor, var_sensor);
-  new_attitude = filter_update(&filter_attitude, var_attitude);
-  new_gps = filter_update(&filter_gps, var_gps);
-  new_control = filter_update(&filter_control, var_control);
+  sensor_head_command_convert(&control_out,
+        new_control);
 
-  filter_to_data(&sensor_data, &control_out,
-                 new_sensor, new_attitude, new_gps, new_control);
 
   //Write sensor file
   if (pdva_config.downsample.sensor.M &&
       ticks % pdva_config.downsample.sensor.M == 0)
     fprintf(datalog.sensor,
-          "%d\t"
-          "%d\t%d\t%d\t"
-          "%d\t%d\t%d\t%d\t"
-          "%d\t%d\t%d\t"
-          "%d\t%d\n",
-          sensor_data.time_gps_ms,
+          "%f\t"
+          "%f\t%f\t%f\t"
+          "%f\t%f\t%f\t%f\t"
+          "%f\t%f\t%f\t"
+          "%f\t%f\n",
+          time_gps,
 
-          sensor_data.acc[0], sensor_data.acc[1], sensor_data.acc[2],
+          new_sensor->acc[0], new_sensor->acc[1], new_sensor->acc[2],
 
-          sensor_data.gyro[0], sensor_data.gyro[1], sensor_data.gyro[2],
-          sensor_data.gyro_temp,
+          new_sensor->gyro[0], new_sensor->gyro[1], new_sensor->gyro[2],
+          new_sensor->gyro_temp,
 
-          sensor_data.mag[0], sensor_data.mag[1], sensor_data.mag[2],
+          new_sensor->mag[0], new_sensor->mag[1], new_sensor->mag[2],
 
-          sensor_data.dyn_press, sensor_data.stat_press);
+          new_sensor->dyn_press, new_sensor->stat_press);
 
   //Write attitude file
   if (pdva_config.downsample.attitude.M &&
       ticks % pdva_config.downsample.attitude.M == 0)
     fprintf(datalog.attitude,
-          "%d\t"
+          "%f\t"
           "%f\t%f\t%f\t"
-          "%u\t"
-          "%d\n",
-          sensor_data.time_gps_ms,
+          "%f\t"
+          "%f\n",
+          time_gps,
 
-          sensor_data.att_est[0], sensor_data.att_est[1],
-          sensor_data.att_est[2],
+          new_attitude->att_est[0], new_attitude->att_est[1],
+          new_attitude->att_est[2],
 
-          sensor_data.airspeed,
+          new_attitude->airspeed,
 
-          sensor_data.altitude);
+          new_attitude->altitude);
 
   //Write gps file
   if (pdva_config.downsample.gps.M &&
       ticks % pdva_config.downsample.gps.M == 0)
     fprintf(datalog.gps,
-          "%d\t"
-          "%d\t%d\t%d\t"
-          "%d\t"
-          "%u\t"
-          "%d\t%d\t%d\n",
-          sensor_data.time_gps_ms,
+          "%f\t"
+          "%f\t%f\t%f\t"
+          "%f\t"
+          "%f\t"
+          "%f\t%f\t%f\n",
+          time_gps,
 
-          sensor_data.lat_gps, sensor_data.lon_gps, sensor_data.alt_gps,
+          new_gps->lat_gps, new_gps->lon_gps, new_gps->alt_gps,
 
-          sensor_data.hdg_gps,
+          new_gps->hdg_gps,
 
-          sensor_data.speed_gps,
+          new_gps->speed_gps,
 
-          sensor_data.pos_fix_gps, sensor_data.nosv_gps, sensor_data.hdop_gps);
+          new_gps->pos_fix_gps, new_gps->nosv_gps, new_gps->hdop_gps);
 
   //Write control file
   if (pdva_config.downsample.control.M &&
       ticks % pdva_config.downsample.control.M == 0)
     fprintf(datalog.control,
-          "%d\t"
+          "%f\t"
           "%u\t%u\t%u\t%u\n",
-          sensor_data.time_gps_ms,
+          time_gps,
 
           control_out.aileron, control_out.elevator,
           control_out.throttle, control_out.rudder);
@@ -448,82 +592,4 @@ filter_update(filter_t *f, double *x){
   return &f->Y[l * f->v];
 
 }
-
-
-/// Convert sensor head and control data to double arrays for filtering
-void data_to_filter(mavlink_sensor_head_data_t * sensor_data,
-       mavlink_sensor_head_command_t * control_out, double * var_sensor,
-       double * var_attitude, double * var_gps, double * var_control){
-  int i;
-
-  for(i=0;i<3;++i)
-    var_sensor[i] = (double) sensor_data->acc[i];
-  for(i=0;i<3;++i)
-    var_sensor[3+i] = (double) sensor_data->gyro[i];
-  var_sensor[6] = (double) sensor_data->gyro_temp;
-  for(i=0;i<3;++i)
-    var_sensor[7+i] = (double) sensor_data->mag[i];
-  var_sensor[10] = (double) sensor_data->dyn_press;
-  var_sensor[11] = (double) sensor_data->stat_press;
-
-  for(i=0;i<3;++i)
-    var_attitude[i] = (double) sensor_data->att_est[i];
-  var_attitude[3] = (double) sensor_data->airspeed;
-  var_attitude[4] = (double) sensor_data->altitude;
-
-  var_gps[0] = (double) sensor_data->lat_gps;
-  var_gps[1] = (double) sensor_data->lon_gps;
-  var_gps[2] = (double) sensor_data->alt_gps;
-  var_gps[3] = (double) sensor_data->hdg_gps;
-  var_gps[4] = (double) sensor_data->speed_gps;
-  var_gps[5] = (double) sensor_data->pos_fix_gps;
-  var_gps[6] = (double) sensor_data->nosv_gps;
-  var_gps[7] = (double) sensor_data->hdop_gps;
-
-  var_control[0] = (double) control_out->aileron;
-  var_control[1] = (double) control_out->elevator;
-  var_control[2] = (double) control_out->throttle;
-  var_control[3] = (double) control_out->rudder;
-
-}
-
-/// Convert double arrays back to sensor head and control data.
-void filter_to_data(mavlink_sensor_head_data_t * sensor_data,
-       mavlink_sensor_head_command_t * control_out, double * var_sensor,
-       double * var_attitude, double * var_gps, double * var_control){
-
-  int i;
-
-  for(i=0;i<3;++i)
-    sensor_data->acc[i] = (short) var_sensor[i];
-  for(i=0;i<3;++i)
-    sensor_data->gyro[i] = (short) var_sensor[3+i];
-  sensor_data->gyro_temp = (short) var_sensor[6];
-  for(i=0;i<3;++i)
-    sensor_data->mag[i] = (short) var_sensor[7+i];
-  sensor_data->dyn_press = (short) var_sensor[10];
-  sensor_data->stat_press = (short) var_sensor[11];
-
-  for(i=0;i<3;++i)
-    sensor_data->att_est[i] = (float) var_attitude[i];
-  sensor_data->airspeed = (unsigned short) var_attitude[3];
-  sensor_data->altitude = (int) var_attitude[4];
-
-  sensor_data->lat_gps = (int) var_gps[0];
-  sensor_data->lon_gps = (int) var_gps[1];
-  sensor_data->alt_gps = (int) var_gps[2];
-  sensor_data->hdg_gps = (short) var_gps[3];
-  sensor_data->speed_gps = (unsigned short) var_gps[4];
-  sensor_data->pos_fix_gps = (short) var_gps[5];
-  sensor_data->nosv_gps = (short) var_gps[6];
-  sensor_data->hdop_gps = (short) var_gps[7];
-
-
-  control_out->aileron = (unsigned) var_control[0];
-  control_out->elevator = (unsigned) var_control[1];
-  control_out->throttle = (unsigned) var_control[2];
-  control_out->rudder = (unsigned) var_control[3];
-
-}
-
 

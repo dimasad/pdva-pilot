@@ -269,6 +269,8 @@ downsample_destroy(downsample_t * down){
 /// Initialize pdva_pilot_config_t structure.
 void 
 pdva_config_init(pdva_pilot_config_t *pdva_config) {
+  int i;
+
   pdva_config->control_timer_period.tv_sec = 0;
   pdva_config->control_timer_period.tv_nsec = CONTROL_TIMER_PERIOD_NS;
   pdva_config->datalog_timer_period.tv_sec = 0;
@@ -281,6 +283,61 @@ pdva_config_init(pdva_pilot_config_t *pdva_config) {
   pdva_config->downsample.gps.n = 0;
   pdva_config->downsample.control.M = 1;
   pdva_config->downsample.control.n = 0;
+
+  for(i=0;i<3;++i){
+    pdva_config->gain.sensor.acc[i] = 1.0;
+    pdva_config->offset.sensor.acc[i] = 0.0;
+  }
+  for(i=0;i<3;++i){
+    pdva_config->gain.sensor.gyro[i] = 1.0;
+    pdva_config->offset.sensor.gyro[i] = 0.0;
+  }
+  pdva_config->gain.sensor.gyro_temp = 1.0;
+  pdva_config->offset.sensor.gyro_temp = 0.0;
+  for(i=0;i<3;++i){
+    pdva_config->gain.sensor.mag[i] = 1.0;
+    pdva_config->offset.sensor.mag[i] = 0.0;
+  }
+  pdva_config->gain.sensor.dyn_press = 1.0;
+  pdva_config->offset.sensor.dyn_press = 0.0;
+  pdva_config->gain.sensor.stat_press = 1.0;
+  pdva_config->offset.sensor.stat_press = 0.0;
+
+  for(i=0;i<3;++i){
+    pdva_config->gain.attitude.att_est[i] = 1.0;
+    pdva_config->offset.attitude.att_est[i] = 0.0;
+  }
+  pdva_config->gain.attitude.airspeed = 1.0;
+  pdva_config->offset.attitude.airspeed = 0.0;
+  pdva_config->gain.attitude.altitude = 1.0;
+  pdva_config->offset.attitude.altitude = 0.0;
+
+  pdva_config->gain.gps.lat_gps = 1.0;
+  pdva_config->offset.gps.lat_gps = 0.0;
+  pdva_config->gain.gps.lon_gps = 1.0;
+  pdva_config->offset.gps.lon_gps = 0.0;
+  pdva_config->gain.gps.alt_gps = 1.0;
+  pdva_config->offset.gps.alt_gps = 0.0;
+  pdva_config->gain.gps.hdg_gps = 1.0;
+  pdva_config->offset.gps.hdg_gps = 0.0;
+  pdva_config->gain.gps.speed_gps = 1.0;
+  pdva_config->offset.gps.speed_gps = 0.0;
+  pdva_config->gain.gps.pos_fix_gps = 1.0;
+  pdva_config->offset.gps.pos_fix_gps = 0.0;
+  pdva_config->gain.gps.nosv_gps = 1.0;
+  pdva_config->offset.gps.nosv_gps = 0.0;
+  pdva_config->gain.gps.hdop_gps = 1.0;
+  pdva_config->offset.gps.hdop_gps = 0.0;
+
+  pdva_config->gain.control.aileron = 1.0;
+  pdva_config->offset.control.aileron = 0.0;
+  pdva_config->gain.control.elevator = 1.0;
+  pdva_config->offset.control.elevator = 0.0;
+  pdva_config->gain.control.throttle = 1.0;
+  pdva_config->offset.control.throttle = 0.0;
+  pdva_config->gain.control.rudder = 1.0;
+  pdva_config->offset.control.rudder = 0.0;
+
   pdva_config->sysid = 0;
 }
 
@@ -290,6 +347,9 @@ pdva_config_load(pdva_pilot_config_t *pdva_config, const char *file) {
   //Create configuration file object
   config_t config;
   config_init(&config);
+
+  char param_name[MAX_LENGTH];
+  int i;
 
   //Read configuration file
   if (!config_read_file(&config, file)) {
@@ -321,6 +381,67 @@ pdva_config_load(pdva_pilot_config_t *pdva_config, const char *file) {
   downsample_config_load(&config, &pdva_config->downsample.control,
          "control");
 
+  for(i=0;i<3;++i){
+    snprintf(param_name, MAX_LENGTH, "acc_%d_gain", i);
+    config_lookup_float(&config, param_name, &pdva_config->gain.sensor.acc[i]);
+    snprintf(param_name, MAX_LENGTH, "acc_%d_offset", i);
+    config_lookup_float(&config, param_name, &pdva_config->offset.sensor.acc[i]);
+  }
+  for(i=0;i<3;++i){
+    snprintf(param_name, MAX_LENGTH, "gyro_%d_gain", i);
+    config_lookup_float(&config, param_name, &pdva_config->gain.sensor.gyro[i]);
+    snprintf(param_name, MAX_LENGTH, "gyro_%d_offset", i);
+    config_lookup_float(&config, param_name, &pdva_config->offset.sensor.gyro[i]);
+  }
+  config_lookup_float(&config, "gyro_temp_gain", &pdva_config->gain.sensor.gyro_temp);
+  config_lookup_float(&config, "gyro_temp_offset", &pdva_config->offset.sensor.gyro_temp);
+  for(i=0;i<3;++i){
+    snprintf(param_name, MAX_LENGTH, "mag_%d_gain", i);
+    config_lookup_float(&config, param_name, &pdva_config->gain.sensor.mag[i]);
+    snprintf(param_name, MAX_LENGTH, "mag_%d_offset", i);
+    config_lookup_float(&config, param_name, &pdva_config->offset.sensor.mag[i]);
+  }
+  config_lookup_float(&config, "dyn_press_gain", &pdva_config->gain.sensor.dyn_press);
+  config_lookup_float(&config, "dyn_press_offset", &pdva_config->offset.sensor.dyn_press);
+  config_lookup_float(&config, "stat_press_gain", &pdva_config->gain.sensor.stat_press);
+  config_lookup_float(&config, "stat_press_offset", &pdva_config->offset.sensor.stat_press);
+
+  for(i=0;i<3;++i){
+    snprintf(param_name, MAX_LENGTH, "att_est_%d_gain", i);
+    config_lookup_float(&config, param_name, &pdva_config->gain.attitude.att_est[i]);
+    snprintf(param_name, MAX_LENGTH, "att_est_%d_offset", i);
+    config_lookup_float(&config, param_name, &pdva_config->offset.attitude.att_est[i]);
+  }
+  config_lookup_float(&config, "airspeed_gain", &pdva_config->gain.attitude.airspeed);
+  config_lookup_float(&config, "airspeed_offset", &pdva_config->offset.attitude.airspeed);
+  config_lookup_float(&config, "altitude_gain", &pdva_config->gain.attitude.altitude);
+  config_lookup_float(&config, "altitude_offset", &pdva_config->offset.attitude.altitude);
+
+  config_lookup_float(&config, "lat_gps_gain", &pdva_config->gain.gps.lat_gps);
+  config_lookup_float(&config, "lat_gps_offset", &pdva_config->offset.gps.lat_gps);
+  config_lookup_float(&config, "lon_gps_gain", &pdva_config->gain.gps.lon_gps);
+  config_lookup_float(&config, "lon_gps_offset", &pdva_config->offset.gps.lon_gps);
+  config_lookup_float(&config, "alt_gps_gain", &pdva_config->gain.gps.alt_gps);
+  config_lookup_float(&config, "alt_gps_offset", &pdva_config->offset.gps.alt_gps);
+  config_lookup_float(&config, "hdg_gps_gain", &pdva_config->gain.gps.hdg_gps);
+  config_lookup_float(&config, "hdg_gps_offset", &pdva_config->offset.gps.hdg_gps);
+  config_lookup_float(&config, "speed_gps_gain", &pdva_config->gain.gps.speed_gps);
+  config_lookup_float(&config, "speed_gps_offset", &pdva_config->offset.gps.speed_gps);
+  config_lookup_float(&config, "pos_fix_gps_gain", &pdva_config->gain.gps.pos_fix_gps);
+  config_lookup_float(&config, "pos_fix_gps_offset", &pdva_config->offset.gps.pos_fix_gps);
+  config_lookup_float(&config, "nosv_gps_gain", &pdva_config->gain.gps.nosv_gps);
+  config_lookup_float(&config, "nosv_gps_offset", &pdva_config->offset.gps.nosv_gps);
+  config_lookup_float(&config, "hdop_gps_gain", &pdva_config->gain.gps.hdop_gps);
+  config_lookup_float(&config, "hdop_gps_offset", &pdva_config->offset.gps.hdop_gps);
+
+  config_lookup_float(&config, "aileron_gain", &pdva_config->gain.control.aileron);
+  config_lookup_float(&config, "aileron_offset", &pdva_config->offset.control.aileron);
+  config_lookup_float(&config, "elevator_gain", &pdva_config->gain.control.elevator);
+  config_lookup_float(&config, "elevator_offset", &pdva_config->offset.control.elevator);
+  config_lookup_float(&config, "throttle_gain", &pdva_config->gain.control.throttle);
+  config_lookup_float(&config, "throttle_offset", &pdva_config->offset.control.throttle);
+  config_lookup_float(&config, "rudder_gain", &pdva_config->gain.control.rudder);
+  config_lookup_float(&config, "rudder_offset", &pdva_config->offset.control.rudder);
 
   config_destroy(&config);
   return STATUS_SUCCESS;

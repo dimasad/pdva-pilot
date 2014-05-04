@@ -27,6 +27,52 @@ extern "C" {
 
 
 /* *** Types *** */
+/// Sensor structure
+typedef struct {
+  double acc[3]; ///< Accelerometer readings (m/s^2)
+  double gyro[3]; ///< Gyrometer readings (rad/s)
+  double gyro_temp; ///< Gyrometer temperature (K)
+  double mag[3]; ///< Magnetometer readings (T)
+  double dyn_press; ///< Dynamic pressure (Pa)
+  double stat_press; ///< Static pressure (Pa)
+} sensor_t;
+
+/// Attitude structure
+typedef struct {
+  double att_est[3]; ///< Estimated attitude angles (roll, pitch, yaw in radians)
+  double airspeed; ///< Airspeed (m/s)
+  double altitude; ///< Altitude above sea level (m)
+} attitude_t;
+
+/// GPS structure
+typedef struct {
+  double lat_gps; ///< GPS latitude (deg)
+  double lon_gps; ///< GPS longitude (deg)
+  double alt_gps; ///< GPS altitude above MSL (m)
+  double hdg_gps; ///< GPS heading (radians)
+  double speed_gps; ///< GPS groundspeed (m/s)
+  double pos_fix_gps; ///< GPS Position Fix Status
+  double nosv_gps; ///< GPS Number of Satellites Used
+  double hdop_gps; ///< GPS Horizontal Dilution of Precision
+} gps_t;
+
+/// Control structure
+typedef struct {
+  double aileron; ///< Aileron command
+  double elevator; ///< Elevator command
+  double throttle; ///< Throttle command
+  double rudder; ///< Rudder command
+} control_t;
+
+/// All variables structure
+typedef struct {
+  sensor_t sensor; ///< Sensor variables
+  attitude_t attitude; ///< Attitude variables
+  gps_t gps; ///< GPS variables
+  control_t control; ///< Control variables
+} sensor_head_t;
+
+
 /// Downsample structure for a single file
 typedef struct {
   int M;     ///< Downsampling factor.
@@ -48,6 +94,8 @@ typedef struct {
   struct timespec control_timer_period;
   struct timespec datalog_timer_period;
   datalog_downsample_t downsample;
+  sensor_head_t gain;
+  sensor_head_t offset;
   uint8_t sysid;
 } pdva_pilot_config_t;
 

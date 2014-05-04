@@ -22,11 +22,6 @@ extern "C" {
 #define DATALOG_DIR "/var/log/pdva"
 /// Maximum length for the path string
 #define MAX_LENGTH 50
-/// Number of variables for each file
-#define NUM_VAR_SENSOR   12
-#define NUM_VAR_ATTITUDE 5
-#define NUM_VAR_GPS      8
-#define NUM_VAR_CONTROL  4
 
 
 /* *** Types *** */
@@ -83,16 +78,6 @@ filter_destroy(filter_t *filter);
 /// Update the filter (one iteraction).
 double *
 filter_update(filter_t *filter, double *x);
-
-/// Convert sensor head and control data to double arrays for filtering
-void
-data_to_filter(mavlink_sensor_head_data_t *, mavlink_sensor_head_command_t *,
-                    double *, double *, double *, double *);
-
-/// Convert double arrays back to sensor head and control data.
-void
-filter_to_data(mavlink_sensor_head_data_t *, mavlink_sensor_head_command_t *,
-                    double *, double *, double *, double *);
 
 
 #ifdef __cplusplus

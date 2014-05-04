@@ -122,6 +122,8 @@ https://github.com/dimasad/pdva-pilot/blob/master/pdvapilot.xml
 Note that the sensor head runs on a DSP that has 16-bit bytes. This causes
 a lot o trouble to the MAVLink messages, so the MAVLink code on the
 sensor head had to be rewritten to take this into account.
+All the fields in the messages sent to and from the sensor head
+should have sizes multiple of 16 bits (do not use unit8\_t or int8\_t).
 
 This website gives an example of how to use MAVLink to send and receive
 messages:
@@ -201,6 +203,7 @@ The available parameters are
 	long control_timer_period_ns;
 	time_t datalog_timer_period_s;
 	long datalog_timer_period_ns;
+
 	int downsample_%s;
 (where %s is the name of the datalog file)
 
@@ -215,6 +218,53 @@ The available parameters are
 (where %s is the name of the datalog file and
 %d is the index for the numerator)
 
+	acc_%d_gain
+	acc_%d_offset
+	gyro_%d_gain
+	gyro_%d_offset
+	gyro_temp_gain
+	gyro_temp_offset
+	mag_%d_gain
+	mag_%d_offset
+	dyn_press_gain
+	dyn_press_offset
+	stat_press_gain
+	stat_press_offset
+(where %d is the index for the axis 0,1,2)
+
+	att_est_%d_gain
+	att_est_%d_offset
+	airspeed_gain
+	airspeed_offset
+	altitude_gain
+	altitude_offset
+(where %d is the index for the axis 0,1,2)
+
+	lat_gps_gain
+	lat_gps_offset
+	lon_gps_gain
+	lon_gps_offset
+	alt_gps_gain
+	alt_gps_offset
+	hdg_gps_gain
+	hdg_gps_offset
+	speed_gps_gain
+	speed_gps_offset
+	pos_fix_gps_gain
+	pos_fix_gps_offset
+	nosv_gps_gain
+	nosv_gps_offset
+	hdop_gps_gain
+	hdop_gps_offset
+
+	aileron_gain
+	aileron_offset
+	elevator_gain
+	elevator_offset
+	throttle_gain
+	throttle_offset
+	rudder_gain
+	rudder_offset
 
 ### Datalog
 
