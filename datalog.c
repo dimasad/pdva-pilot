@@ -186,7 +186,9 @@ datalog_init(datalog_t *log) {
           "%%   double mag[3]; ///< Magnetometer readings (T)\n"
           "%%   double dyn_press; ///< Dynamic pressure (Pa)\n"
           "%%   double stat_press; ///< Static pressure (Pa)\n"
-          "time\t"
+          "%% \n"
+          "%% \n"
+          "t\t"
           "acc0\tacc1\tacc2\t"
           "gyro0\tgyro1\tgyro2\tg_temp\t"
           "mag0\tmag1\tmag2\t"
@@ -233,7 +235,9 @@ datalog_init(datalog_t *log) {
           "%%   double att_est[3]; ///< Estimated attitude angles (roll, pitch, yaw in radians)\n"
           "%%   double airspeed; ///< Airspeed (m/s)\n"
           "%%   double altitude; ///< Altitude above sea level (m)\n"
-          "time\t"
+          "%% \n"
+          "%% \n"
+          "t\t"
           "att0\tatt1\tatt2\t"
           "airsp\t"
           "alti\n");
@@ -284,7 +288,9 @@ datalog_init(datalog_t *log) {
           "%%   double pos_fix_gps; ///< GPS Position Fix Status\n"
           "%%   double nosv_gps; ///< GPS Number of Satellites Used\n"
           "%%   double hdop_gps; ///< GPS Horizontal Dilution of Precision\n"
-          "time\t"
+          "%% \n"
+          "%% \n"
+          "t\ttime\t"
           "lat\tlon\talt\t"
           "hdg\t"
           "speed\t"
@@ -332,7 +338,9 @@ datalog_init(datalog_t *log) {
           "%%   uint16_t elevator; ///< Elevator command, 0 to 65535\n"
           "%%   uint16_t throttle; ///< Throttle command, 0 to 65535\n"
           "%%   uint16_t rudder; ///< Rudder command, 0 to 65535\n"
-          "time\t"
+          "%% \n"
+          "%% \n"
+          "t\t"
           "aileron\televator\tthrottle\trudder\n");
 
   //Create the telecommand log file
@@ -348,6 +356,7 @@ datalog_init(datalog_t *log) {
   fprintf(log->telecommand,
           "%% Telecommand log file\n"
           "%% Experiment %d\n"
+          "%% \n"
           "%% \n"
           "time\t"
           "command\n",
@@ -392,10 +401,10 @@ void datalog_alarm_handler(union sigval arg) {
   attitude_t *new_attitude;
   gps_t *new_gps;
   control_t *new_control;
-  double time_gps;
+  double time, time_gps;
 //printf("DatalogAlarm!!!\n");
   //Get the most recent data from the control thread
-  get_datalog_data(&sensor, &attitude, &gps, &control, &time_gps);
+  get_datalog_data(&sensor, &attitude, &gps, &control, &time, &time_gps);
 
   new_sensor = (sensor_t *) filter_update(&filter_sensor, (double *) &sensor);
   new_attitude = (attitude_t *) filter_update(&filter_attitude, (double *) &attitude);
@@ -415,7 +424,7 @@ void datalog_alarm_handler(union sigval arg) {
           "%f\t%f\t%f\t%f\t"
           "%f\t%f\t%f\t"
           "%f\t%f\n",
-          time_gps,
+          time,
 
           new_sensor->acc[0], new_sensor->acc[1], new_sensor->acc[2],
 
@@ -434,7 +443,7 @@ void datalog_alarm_handler(union sigval arg) {
           "%f\t%f\t%f\t"
           "%f\t"
           "%f\n",
-          time_gps,
+          time,
 
           new_attitude->att_est[0], new_attitude->att_est[1],
           new_attitude->att_est[2],
@@ -447,12 +456,12 @@ void datalog_alarm_handler(union sigval arg) {
   if (pdva_config.downsample.gps.M &&
       ticks % pdva_config.downsample.gps.M == 0)
     fprintf(datalog.gps,
-          "%f\t"
+          "%f\t%f\t"
           "%f\t%f\t%f\t"
           "%f\t"
           "%f\t"
           "%f\t%f\t%f\n",
-          time_gps,
+          time, time_gps,
 
           new_gps->lat_gps, new_gps->lon_gps, new_gps->alt_gps,
 
@@ -468,7 +477,7 @@ void datalog_alarm_handler(union sigval arg) {
     fprintf(datalog.control,
           "%f\t"
           "%u\t%u\t%u\t%u\n",
-          time_gps,
+          time,
 
           control_out.aileron, control_out.elevator,
           control_out.throttle, control_out.rudder);

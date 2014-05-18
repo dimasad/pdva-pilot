@@ -192,7 +192,7 @@ sensor_head_read_write(mavlink_sensor_head_data_t *payload,
   printf("\nEnd of message\n");
   syslog(LOG_DEBUG, "Could not decode message from sensor head (%s)%d",
 	 __FILE__, __LINE__);
-  return STATUS_SUCCESS;//return STATUS_FAILURE; ///////////*************
+  return STATUS_FAILURE;
   
 }
 

@@ -285,17 +285,17 @@ pdva_config_init(pdva_pilot_config_t *pdva_config) {
   pdva_config->downsample.control.n = 0;
 
   for(i=0;i<3;++i){
-    pdva_config->gain.sensor.acc[i] = 1.0;
+    pdva_config->gain.sensor.acc[i] = 0.03830859375;
     pdva_config->offset.sensor.acc[i] = 0.0;
   }
   for(i=0;i<3;++i){
-    pdva_config->gain.sensor.gyro[i] = 1.0;
+    pdva_config->gain.sensor.gyro[i] = 0.00121414208;
     pdva_config->offset.sensor.gyro[i] = 0.0;
   }
   pdva_config->gain.sensor.gyro_temp = 1.0;
   pdva_config->offset.sensor.gyro_temp = 0.0;
   for(i=0;i<3;++i){
-    pdva_config->gain.sensor.mag[i] = 1.0;
+    pdva_config->gain.sensor.mag[i] = 0.00151515151;
     pdva_config->offset.sensor.mag[i] = 0.0;
   }
   pdva_config->gain.sensor.dyn_press = 1.0;
@@ -329,13 +329,13 @@ pdva_config_init(pdva_pilot_config_t *pdva_config) {
   pdva_config->gain.gps.hdop_gps = 1.0;
   pdva_config->offset.gps.hdop_gps = 0.0;
 
-  pdva_config->gain.control.aileron = 1.0;
+  pdva_config->gain.control.aileron = 65535.0;
   pdva_config->offset.control.aileron = 0.0;
-  pdva_config->gain.control.elevator = 1.0;
+  pdva_config->gain.control.elevator = 65535.0;
   pdva_config->offset.control.elevator = 0.0;
-  pdva_config->gain.control.throttle = 1.0;
+  pdva_config->gain.control.throttle = 65535.0;
   pdva_config->offset.control.throttle = 0.0;
-  pdva_config->gain.control.rudder = 1.0;
+  pdva_config->gain.control.rudder = 65535.0;
   pdva_config->offset.control.rudder = 0.0;
 
   pdva_config->sysid = 0;

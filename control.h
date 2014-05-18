@@ -34,7 +34,7 @@ unsigned control_loop_ticks();
 /// Get the latest sensor head and control data for datalog.
 void get_datalog_data(
        sensor_t *sensor_data, attitude_t *attitude_data, gps_t *gps_data,
-       control_t *control_data, double *time_gps);
+       control_t *control_data, double *time, double *time_gps);
 
 /// Get the latest sensor head and control data for telemetry.
 void get_telemetry_data(

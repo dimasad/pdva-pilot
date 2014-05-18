@@ -117,6 +117,12 @@ static gps_t gps;
 /// Control variables
 static control_t control;
 
+/// Timestamp of system startup
+static double time_startup;
+
+/// Timestamp of the last message received
+static double time_msg_received;
+
 
 /* *** Public functions *** */
 
@@ -151,7 +157,7 @@ unsigned control_loop_ticks() {
 /// Get the latest sensor head and control data for datalog.
 void get_datalog_data(
        sensor_t *sensor_data, attitude_t *attitude_data, gps_t *gps_data,
-       control_t *control_data, double *time_gps) {
+       control_t *control_data, double *time, double *time_gps) {
 
   //Block all signals
   sigset_t oldmask, newmask;
@@ -177,6 +183,7 @@ void get_datalog_data(
   memcpy(control_data, &control, sizeof(control_t));
 
   //Get time
+  *time = time_msg_received;
   *time_gps = sensor_head_data.time_gps_ms / 1e3;
 
   //Unlock mutex
@@ -223,16 +230,22 @@ void get_telemetry_data(
 
 ret_status_t 
 setup_control() {
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  time_startup = tv.tv_sec + 1e-6 * tv.tv_usec;
+
   double control_timer_period = pdva_config.control_timer_period.tv_sec
                               +pdva_config.control_timer_period.tv_nsec / 1e9;
 
+  double kp = 0.001, ki = 0.001;
+
   //Initialize the pid controllers
-  pid_init(&aileron_pid, 0, 1, 1, 0, 0, control_timer_period);
-  pid_init(&elevator_pid, 0, 1, 1, 0, 0, control_timer_period);
-  pid_init(&throttle_pid, 0, 1, 1, 0, 0, control_timer_period);
-  pid_init(&rudder_pid, 0, 1, 1, 0, 0, control_timer_period);
-  pid_init(&roll_pid, -M_PI_2, M_PI_2, 1, 0, 0, control_timer_period);
-  pid_init(&pitch_pid, -M_PI_2, M_PI_2, 1, 0, 0, control_timer_period);
+  pid_init(&aileron_pid, 0, 1, kp, ki, 0, control_timer_period);
+  pid_init(&elevator_pid, 0, 1, kp, ki, 0, control_timer_period);
+  pid_init(&throttle_pid, 0, 1, kp, ki, 0, control_timer_period);
+  pid_init(&rudder_pid, 0, 1, kp, ki, 0, control_timer_period);
+  pid_init(&roll_pid, -M_PI_2, M_PI_2, kp, ki, 0, control_timer_period);
+  pid_init(&pitch_pid, -M_PI_2, M_PI_2, kp, ki, 0, control_timer_period);
   
   //Setup the interrupt handler
   struct sigaction alarm_action;
@@ -312,6 +325,9 @@ alarm_handler(int signum, siginfo_t *info, void *context) {
     return;
 
   }
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  time_msg_received = tv.tv_sec + 1e-6 * tv.tv_usec - time_startup;
 
   // Convert sensor head data to double format in SI units
   sensor_head_data_convert(&sensor_head_data, &sensor, &attitude, &gps);
@@ -335,28 +351,28 @@ calculate_control() {
   switch (control_configuration) {
   case ALTITUDE_FROM_POWER:
     control.throttle = pid_update(&throttle_pid,
-			      altitude_ref - attitude.altitude * 0.01);
+			      altitude_ref - attitude.altitude);
     
     pitch_ref = pid_update(&pitch_pid,
-			   airspeed_ref - attitude.airspeed * 0.01);
+			   airspeed_ref - attitude.airspeed);
     break;
   case ALTITUDE_FROM_PITCH:
     pitch_ref = pid_update(&pitch_pid,
-			   altitude_ref - attitude.altitude * 0.01);
+			   altitude_ref - attitude.altitude);
     
     control.throttle = pid_update(&throttle_pid,
-			      airspeed_ref - attitude.airspeed * 0.01);
+			      airspeed_ref - attitude.airspeed);
     break;
   }
 
   roll_ref = pid_update(&roll_pid,
-			yaw_ref - attitude.att_est[2] * 0.001);
+			yaw_ref - attitude.att_est[2]);
     
   control.aileron = pid_update(&aileron_pid,
-			   roll_ref - attitude.att_est[0] * 0.001);
+			   roll_ref - attitude.att_est[0]);
   
   control.elevator = pid_update(&elevator_pid,
-			    pitch_ref - attitude.att_est[1] * 0.001);
+			    pitch_ref - attitude.att_est[1]);
   control.elevator += fabs(roll_ref) * elevator_ff;
   
   control.rudder = pid_update(&rudder_pid, - sensor.acc[1]);
