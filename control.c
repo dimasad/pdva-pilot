@@ -123,6 +123,12 @@ static double time_startup;
 /// Timestamp of the last message received
 static double time_msg_received;
 
+/// Last message sequential number
+static uint8_t msg_seq;
+
+/// Last message was received successfully
+static uint8_t msg_ok;
+
 
 /* *** Public functions *** */
 
@@ -157,7 +163,8 @@ unsigned control_loop_ticks() {
 /// Get the latest sensor head and control data for datalog.
 void get_datalog_data(
        sensor_t *sensor_data, attitude_t *attitude_data, gps_t *gps_data,
-       control_t *control_data, double *time, double *time_gps) {
+       control_t *control_data, double *time, double *time_gps,
+       uint8_t *seq, uint8_t *ok) {
 
   //Block all signals
   sigset_t oldmask, newmask;
@@ -182,9 +189,11 @@ void get_datalog_data(
   //Get the control data
   memcpy(control_data, &control, sizeof(control_t));
 
-  //Get time
+  //Get time, sequential number and status
   *time = time_msg_received;
   *time_gps = sensor_head_data.time_gps_ms / 1e3;
+  *seq = msg_seq;
+  *ok = msg_ok;
 
   //Unlock mutex
   if (pthread_mutex_unlock(&mutex)) {
@@ -315,7 +324,8 @@ alarm_handler(int signum, siginfo_t *info, void *context) {
   ticks++;
   
   //Communicate with sensor head
-  if (sensor_head_read_write(&sensor_head_data, &control_out)) {
+  if (sensor_head_read_write(&sensor_head_data, &msg_seq, &control_out)) {
+    msg_ok = 0;
     //How to proceed when failed to obtain sensor head measurements?
     //Unlock mutex
     if (pthread_mutex_unlock(&mutex)) {
@@ -325,6 +335,7 @@ alarm_handler(int signum, siginfo_t *info, void *context) {
     return;
 
   }
+  msg_ok = 1;
   struct timeval tv;
   gettimeofday(&tv, NULL);
   time_msg_received = tv.tv_sec + 1e-6 * tv.tv_usec - time_startup;

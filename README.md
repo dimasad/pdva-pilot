@@ -192,7 +192,8 @@ To compile the code to run on the Gumstix, follow these instructions.
 
 ### Parameters loaded from configuration files
 
-The files **/etc/pdva/pdva-pilot.cfg** and **/etc/pdva/mav_params.cfg** are
+The files **pdva-pilot.cfg** and **mav_params.cfg** located at the directory
+defined by **PDVA_CONFIG_DIR** are
 used to store configuration parameters that are loaded at the start of
 program execution.
 
@@ -203,6 +204,8 @@ The available parameters are
 	long control_timer_period_ns;
 	time_t datalog_timer_period_s;
 	long datalog_timer_period_ns;
+
+        uint32_t spi_speed_hz;
 
 	int downsample_%s;
 (where %s is the name of the datalog file)
@@ -268,7 +271,7 @@ The available parameters are
 
 ### Datalog
 
-The datalog files are created at **/var/log/pdva/**.
+The datalog files are created at the directory defined at **DATALOG_DIR**.
 In this directory, the file **last_experiment** contains the number of the
 last experiment performed.
 One folder is created for each experiment with the following files

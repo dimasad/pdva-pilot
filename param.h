@@ -93,6 +93,7 @@ typedef struct {
 typedef struct {
   struct timespec control_timer_period;
   struct timespec datalog_timer_period;
+  uint32_t spi_speed_hz;
   datalog_downsample_t downsample;
   sensor_head_t gain;
   sensor_head_t offset;

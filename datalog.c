@@ -232,12 +232,15 @@ datalog_init(datalog_t *log) {
           "%% \n"
           "%% Variables:\n"
           "%% \n"
+          "%%   uint8_t seq; ///< Last message sequential number\n"
+          "%%   uint8_t ok; ///< Last message received successfully\n"
           "%%   double att_est[3]; ///< Estimated attitude angles (roll, pitch, yaw in radians)\n"
           "%%   double airspeed; ///< Airspeed (m/s)\n"
           "%%   double altitude; ///< Altitude above sea level (m)\n"
           "%% \n"
           "%% \n"
           "t\t"
+          "seq\tok\t"
           "att0\tatt1\tatt2\t"
           "airsp\t"
           "alti\n");
@@ -402,9 +405,10 @@ void datalog_alarm_handler(union sigval arg) {
   gps_t *new_gps;
   control_t *new_control;
   double time, time_gps;
+  uint8_t seq, ok;
 //printf("DatalogAlarm!!!\n");
   //Get the most recent data from the control thread
-  get_datalog_data(&sensor, &attitude, &gps, &control, &time, &time_gps);
+  get_datalog_data(&sensor, &attitude, &gps, &control, &time, &time_gps, &seq, &ok);
 
   new_sensor = (sensor_t *) filter_update(&filter_sensor, (double *) &sensor);
   new_attitude = (attitude_t *) filter_update(&filter_attitude, (double *) &attitude);
@@ -440,10 +444,13 @@ void datalog_alarm_handler(union sigval arg) {
       ticks % pdva_config.downsample.attitude.M == 0)
     fprintf(datalog.attitude,
           "%f\t"
+          "%u\t%u\t"
           "%f\t%f\t%f\t"
           "%f\t"
           "%f\n",
           time,
+
+          seq, ok,
 
           new_attitude->att_est[0], new_attitude->att_est[1],
           new_attitude->att_est[2],

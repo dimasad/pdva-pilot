@@ -19,7 +19,7 @@ extern "C" {
 
 /* *** Macros *** */
 /// Path to the datalogging directory
-#define DATALOG_DIR "/var/log/pdva"
+#define DATALOG_DIR "/home/root/log"
 /// Maximum length for the path string
 #define MAX_LENGTH 50
 

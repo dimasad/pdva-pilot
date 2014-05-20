@@ -42,11 +42,6 @@
 ///< File path of the SENSOR_HEAD_COMM_CHANNEL
 #endif // not SENSOR_HEAD_STREAM_PATH
 
-#ifndef SPI_MAX_SPEED_HZ
-#define SPI_MAX_SPEED_HZ 500000
-///< Maximum SPI transfer speed, in Hertz.
-#endif // not SPI_MAX_SPEED_HZ
-
 
 /* *** Internal variables *** */
 
@@ -59,7 +54,6 @@ static uint8_t sensor_head_send_buffer[MAVLINK_MAX_PACKET_LEN];
 
 static mavlink_message_handler_t msg_handlers[256];
 ///< Array with all registered message handlers, indexed by msgid.
-uint32_t max_speed_hz;
 
 /* *** Prototypes *** */
 
@@ -127,7 +121,7 @@ radio_register_handler(uint8_t msgid, mavlink_message_handler_t handler) {
 }
 
 ret_status_t
-sensor_head_read_write(mavlink_sensor_head_data_t *payload,
+sensor_head_read_write(mavlink_sensor_head_data_t *payload, uint8_t *seq,
                        mavlink_sensor_head_command_t *control_out) {
   //Read data from SENSOR_HEAD_COMM_CHANNEL
   uint8_t rx[MAVLINK_MSG_ID_SENSOR_HEAD_DATA_LEN
@@ -156,7 +150,7 @@ sensor_head_read_write(mavlink_sensor_head_data_t *payload,
   tr.len = MAVLINK_MSG_ID_SENSOR_HEAD_DATA_LEN
 	      + MAVLINK_NUM_NON_PAYLOAD_BYTES + 1;
   tr.delay_usecs = 0;
-  tr.speed_hz = max_speed_hz;
+  tr.speed_hz = pdva_config.spi_speed_hz;
   tr.bits_per_word = 8;
 
   mavlink_reset_channel_status(SENSOR_HEAD_COMM_CHANNEL);
@@ -185,7 +179,9 @@ sensor_head_read_write(mavlink_sensor_head_data_t *payload,
     if(mavlink_parse_char(SENSOR_HEAD_COMM_CHANNEL, rx[i], &msg, &status)){
         //Retrieve the message payload and return
         mavlink_msg_sensor_head_data_decode(&msg, payload);
-        printf("\nx %d, y %d, z %d\n", payload->acc[0], payload->acc[1], payload->acc[2]);
+        *seq = msg.seq;
+        if(msg.seq % 25 == 0)
+            printf("\nx %d, y %d, z %d\n", payload->acc[0], payload->acc[1], payload->acc[2]);
         return STATUS_SUCCESS;
     }
   }
@@ -235,11 +231,9 @@ ret_status_t setup_comm() {
     syslog(LOG_ERR, "Error setting SPI port bits per word: %m (%s)%d",
 	   __FILE__, __LINE__);
   
-//  uint32_t max_speed_hz = SPI_MAX_SPEED_HZ;
-printf("\nEnter SPI frequency (Hz): ");
-scanf("%u", &max_speed_hz);
-printf("Frequency %u Hz.\n", max_speed_hz);
-  if (ioctl(sensor_head, SPI_IOC_WR_MAX_SPEED_HZ, &max_speed_hz))
+
+printf(" SPI frequency %u Hz.\n", pdva_config.spi_speed_hz);
+  if (ioctl(sensor_head, SPI_IOC_WR_MAX_SPEED_HZ, &pdva_config.spi_speed_hz))
     syslog(LOG_ERR, "Error setting SPI port maximum speed: %m (%s)%d",
 	   __FILE__, __LINE__);
 
