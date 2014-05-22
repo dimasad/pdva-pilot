@@ -342,7 +342,7 @@ alarm_handler(int signum, siginfo_t *info, void *context) {
 
   // Convert sensor head data to double format in SI units
   sensor_head_data_convert(&sensor_head_data, &sensor, &attitude, &gps);
-printf("Mensagem recebida\n");
+  
   
   //Calculate the control action
   calculate_control();

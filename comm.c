@@ -173,9 +173,10 @@ sensor_head_read_write(mavlink_sensor_head_data_t *payload, uint8_t *seq,
   //Decode message
   mavlink_message_t msg;
   mavlink_status_t status;
-  printf("Message received at read() len=%d\n",len);
+  uint8_t c = 0;  
   //Parse the data
-  for (int i = 0; i < sizeof rx; i++){if(i%10==0)printf("\n");printf("%d,",rx[i]);
+  for (int i = 0; i < sizeof rx; i++){
+    c |= rx[i];
     if(mavlink_parse_char(SENSOR_HEAD_COMM_CHANNEL, rx[i], &msg, &status)){
         //Retrieve the message payload and return
         mavlink_msg_sensor_head_data_decode(&msg, payload);
@@ -185,7 +186,11 @@ sensor_head_read_write(mavlink_sensor_head_data_t *payload, uint8_t *seq,
         return STATUS_SUCCESS;
     }
   }
-  printf("\nEnd of message\n");
+  
+  if(!c){
+    printf("NULL message\n");
+    return STATUS_FAILURE;
+  }
   syslog(LOG_DEBUG, "Could not decode message from sensor head (%s)%d",
 	 __FILE__, __LINE__);
   return STATUS_FAILURE;

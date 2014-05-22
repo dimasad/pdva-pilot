@@ -12,6 +12,7 @@ extern "C" {
 /* *** Includes *** */
 
 #include <stdio.h>
+#include <semaphore.h>
 
 #include "mavlink_bridge.h"
 #include "pdva-pilot.h"
@@ -22,6 +23,13 @@ extern "C" {
 #define DATALOG_DIR "/home/root/log"
 /// Maximum length for the path string
 #define MAX_LENGTH 50
+/// Period between writes to file (ms)
+#define DATALOG_WRITE_MS 5000
+/// Maximum line lengths for each file
+#define SENSOR_LINE_LEN 230
+#define ATTITUDE_LINE_LEN 130
+#define GPS_LINE_LEN 200
+#define CONTROL_LINE_LEN 80
 
 
 /* *** Types *** */
@@ -34,6 +42,15 @@ typedef struct {
   FILE *control;
   FILE *telecommand;
 } datalog_t;
+
+/// Structure for each datalog file.
+typedef struct {
+  pthread_t thread;
+  FILE * file;
+  sem_t sem;
+  char *buffer;
+  int count;
+} datalog_file_t;
 
 /// Digital filter structure.
 /// Used to implement a[0]*y[k]+...+a[n]*y[k-n] = b[0]*x[k]+...+b[n]*x[k-n]
@@ -50,6 +67,10 @@ typedef struct {
 
 
 /* *** Functions *** */
+
+/// Function executed by the writer thread of each file.
+void *
+writer(void * arg);
 
 /// Function executed by the datalog thread.
 void *

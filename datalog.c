@@ -22,7 +22,31 @@
 /// Configuration structure.
 extern pdva_pilot_config_t pdva_config;
 
+/// Mutex used to for datalog alarm handler
+pthread_mutex_t datalog_mutex;
+
+/// Structures used by each writer thread
+datalog_file_t sensor_file, attitude_file, gps_file, control_file;
+
 /* *** Internal variables *** */
+
+/// Buffers to write to datalog files
+static char *sensor_buffer, *attitude_buffer, *gps_buffer, *control_buffer;
+
+/// Size of the buffers
+static int sensor_size, attitude_size, gps_size, control_size;
+
+/// Current index for the buffers
+static int p = 0;
+
+/// Number of bytes used in each buffer
+static int sensor_count, attitude_count, gps_count, control_count;
+
+/// Number of ticks since last write.
+static int ticks_write = 0;
+
+/// Number of ticks between write operations.
+static int write_interval = 1;
 
 /// Structure that contains the datalog files.
 static datalog_t datalog;
@@ -51,12 +75,31 @@ filter_t filter_sensor, filter_attitude, filter_gps, filter_control;
 
 /* *** Public functions *** */
 
+/// Function executed by the writer thread of each file.
+void *
+writer(void * arg) {
+  datalog_file_t * file = (datalog_file_t *) arg;
+
+  while(1) {
+    if(sem_wait(&file->sem))
+      syslog(LOG_ERR, "Error waiting on semaphore: %m (%s)%d",
+	   __FILE__, __LINE__);
+
+
+    //Write file
+    if(fwrite(file->buffer, file->count, 1, file->file) != 1)
+      syslog(LOG_ERR, "Error writing on file: %m (%s)%d",
+	   __FILE__, __LINE__);
+  }
+  return NULL;
+}
+
 void *
 datalogging(void *arg) {
 
   //Setup the datalogs
   datalog_init(&datalog);
-
+/*
   //Get the attributes of the current thread
   pthread_attr_t attr;
   pthread_t this_thread = pthread_self();
@@ -64,13 +107,13 @@ datalogging(void *arg) {
     syslog(LOG_ERR, "Could not get datalog thread attributes.");
     return (void *) STATUS_FAILURE;
   }
-
+*/
   //Initialize the sigevent structure
   struct sigevent sevp;
   sevp.sigev_notify = SIGEV_THREAD;
   sevp.sigev_value.sival_int = 0;
   sevp.sigev_notify_function = &datalog_alarm_handler;
-  sevp.sigev_notify_attributes = &attr;
+  sevp.sigev_notify_attributes = NULL;
 
   //Create timer
   if (timer_create(CLOCK_REALTIME, &sevp, &datalog_timer)) {
@@ -78,13 +121,13 @@ datalogging(void *arg) {
 	   __FILE__, __LINE__);
     return (void *) STATUS_FAILURE;
   }
-
+/*
   //Destroy the thread attributes (no longer needed)
   if(pthread_attr_destroy(&attr)){
     syslog(LOG_ERR, "Could not destroy datalog thread attributes.");
     return (void *) STATUS_FAILURE;
   }
-
+*/
   //Set timer
   struct itimerspec timer_spec;
   timer_spec.it_interval.tv_sec = pdva_config.datalog_timer_period.tv_sec;
@@ -93,7 +136,7 @@ datalogging(void *arg) {
   timer_spec.it_value.tv_nsec = pdva_config.datalog_timer_period.tv_nsec;
 
   if (timer_settime(datalog_timer, 0, &timer_spec, NULL)) {
-    syslog(LOG_ERR, "Error setting control loop timer: %m (%s)%d.",
+    syslog(LOG_ERR, "Error setting datalog loop timer: %m (%s)%d.",
 	   __FILE__, __LINE__);
     return (void *) STATUS_FAILURE;
   }
@@ -119,6 +162,20 @@ datalog_init(datalog_t *log) {
                               +pdva_config.control_timer_period.tv_nsec / 1e9;
   double datalog_timer_period = pdva_config.datalog_timer_period.tv_sec
                               +pdva_config.datalog_timer_period.tv_nsec / 1e9;
+
+  sensor_size = (pdva_config.datalog_write_ms * SENSOR_LINE_LEN /
+                (1000.0 * datalog_timer_period));
+  attitude_size = (pdva_config.datalog_write_ms * ATTITUDE_LINE_LEN /
+                (1000.0 * datalog_timer_period));
+  gps_size = (pdva_config.datalog_write_ms * GPS_LINE_LEN /
+                (1000.0 * datalog_timer_period));
+  control_size = (pdva_config.datalog_write_ms * CONTROL_LINE_LEN /
+                (1000.0 * datalog_timer_period));
+
+  sensor_buffer = (char *) malloc(2 * sensor_size * sizeof(char));
+  attitude_buffer = (char *) malloc(2 * attitude_size * sizeof(char));
+  gps_buffer = (char *) malloc(2 * gps_size * sizeof(char));
+  control_buffer = (char *) malloc(2 * control_size * sizeof(char));
 
   //Create the datalog directory (if it doesn't already exist)
   mkdir(DATALOG_DIR, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
@@ -395,6 +452,67 @@ datalog_init(datalog_t *log) {
                                pdva_config.downsample.control.a,
                                pdva_config.downsample.control.b);
 
+  sensor_count = attitude_count = gps_count = control_count = 0;
+
+  write_interval = (int) (pdva_config.datalog_write_ms /
+                          (1000.0 * datalog_timer_period));
+
+  //Initialize datalog mutex
+  if (pthread_mutex_init(&datalog_mutex, NULL)) {
+    syslog(LOG_ERR, "Error initializing datalog mutex: %m (%s)%d",
+	   __FILE__, __LINE__);
+    return STATUS_FAILURE;
+  }
+
+
+  sensor_file.file = datalog.sensor;
+  if(sem_init(&sensor_file.sem, 0, 0))
+    syslog(LOG_ERR, "Error initializing sensor semaphore: %m (%s)%d",
+	   __FILE__, __LINE__);
+  sensor_file.buffer = NULL;
+  sensor_file.count = 0;
+
+  if(pthread_create(&sensor_file.thread, NULL, writer, &sensor_file))
+    syslog(LOG_ERR, "Error creating sensor thread: %m (%s)%d",
+	   __FILE__, __LINE__);
+
+
+  attitude_file.file = datalog.attitude;
+  if(sem_init(&attitude_file.sem, 0, 0))
+    syslog(LOG_ERR, "Error initializing attitude semaphore: %m (%s)%d",
+	   __FILE__, __LINE__);
+  attitude_file.buffer = NULL;
+  attitude_file.count = 0;
+
+  if(pthread_create(&attitude_file.thread, NULL, writer, &attitude_file))
+    syslog(LOG_ERR, "Error creating attitude thread: %m (%s)%d",
+	   __FILE__, __LINE__);
+
+
+  gps_file.file = datalog.gps;
+  if(sem_init(&gps_file.sem, 0, 0))
+    syslog(LOG_ERR, "Error initializing gps semaphore: %m (%s)%d",
+	   __FILE__, __LINE__);
+  gps_file.buffer = NULL;
+  gps_file.count = 0;
+
+  if(pthread_create(&gps_file.thread, NULL, writer, &gps_file))
+    syslog(LOG_ERR, "Error creating gps thread: %m (%s)%d",
+	   __FILE__, __LINE__);
+
+
+  control_file.file = datalog.control;
+  if(sem_init(&control_file.sem, 0, 0))
+    syslog(LOG_ERR, "Error initializing control semaphore: %m (%s)%d",
+	   __FILE__, __LINE__);
+  control_file.buffer = NULL;
+  control_file.count = 0;
+
+  if(pthread_create(&control_file.thread, NULL, writer, &control_file))
+    syslog(LOG_ERR, "Error creating control thread: %m (%s)%d",
+	   __FILE__, __LINE__);
+
+
   return STATUS_SUCCESS;
 }
 
@@ -406,6 +524,17 @@ void datalog_alarm_handler(union sigval arg) {
   control_t *new_control;
   double time, time_gps;
   uint8_t seq, ok;
+  int a;
+
+  double datalog_timer_period = pdva_config.datalog_timer_period.tv_sec
+                              +pdva_config.datalog_timer_period.tv_nsec / 1e9;
+
+  //Lock datalog mutex
+  if (pthread_mutex_trylock(&datalog_mutex)) {
+    printf("Mutex NOT ok\n");
+    return;
+  }
+
 //printf("DatalogAlarm!!!\n");
   //Get the most recent data from the control thread
   get_datalog_data(&sensor, &attitude, &gps, &control, &time, &time_gps, &seq, &ok);
@@ -419,10 +548,11 @@ void datalog_alarm_handler(union sigval arg) {
         new_control);
 
 
-  //Write sensor file
+  //Write sensor buffer
   if (pdva_config.downsample.sensor.M &&
-      ticks % pdva_config.downsample.sensor.M == 0)
-    fprintf(datalog.sensor,
+      ticks % pdva_config.downsample.sensor.M == 0) {
+    a = snprintf(&sensor_buffer[p*sensor_size + sensor_count],
+                 sensor_size - sensor_count,
           "%f\t"
           "%f\t%f\t%f\t"
           "%f\t%f\t%f\t%f\t"
@@ -438,11 +568,19 @@ void datalog_alarm_handler(union sigval arg) {
           new_sensor->mag[0], new_sensor->mag[1], new_sensor->mag[2],
 
           new_sensor->dyn_press, new_sensor->stat_press);
+    if(a<0 || a>= sensor_size - sensor_count) {
+      syslog(LOG_ERR, "Error writing on sensor buffer: %m (%s)%d",
+	   __FILE__, __LINE__);
+      return;
+    }
+    sensor_count += a;
+  }
 
-  //Write attitude file
+  //Write attitude buffer
   if (pdva_config.downsample.attitude.M &&
-      ticks % pdva_config.downsample.attitude.M == 0)
-    fprintf(datalog.attitude,
+      ticks % pdva_config.downsample.attitude.M == 0) {
+    a = snprintf(&attitude_buffer[p*attitude_size + attitude_count],
+                 attitude_size - attitude_count,
           "%f\t"
           "%u\t%u\t"
           "%f\t%f\t%f\t"
@@ -458,11 +596,19 @@ void datalog_alarm_handler(union sigval arg) {
           new_attitude->airspeed,
 
           new_attitude->altitude);
+    if(a<0 || a>= attitude_size - attitude_count) {
+      syslog(LOG_ERR, "Error writing on attitude buffer: %m (%s)%d",
+	   __FILE__, __LINE__);
+      return;
+    }
+    attitude_count += a;
+  }
 
-  //Write gps file
+  //Write gps buffer
   if (pdva_config.downsample.gps.M &&
-      ticks % pdva_config.downsample.gps.M == 0)
-    fprintf(datalog.gps,
+      ticks % pdva_config.downsample.gps.M == 0) {
+    a = snprintf(&gps_buffer[p*gps_size + gps_count],
+                 gps_size - gps_count,
           "%f\t%f\t"
           "%f\t%f\t%f\t"
           "%f\t"
@@ -477,11 +623,19 @@ void datalog_alarm_handler(union sigval arg) {
           new_gps->speed_gps,
 
           new_gps->pos_fix_gps, new_gps->nosv_gps, new_gps->hdop_gps);
+    if(a<0 || a>= gps_size - gps_count) {
+      syslog(LOG_ERR, "Error writing on gps buffer: %m (%s)%d",
+	   __FILE__, __LINE__);
+      return;
+    }
+    gps_count += a;
+  }
 
-  //Write control file
+  //Write control buffer
   if (pdva_config.downsample.control.M &&
-      ticks % pdva_config.downsample.control.M == 0)
-    fprintf(datalog.control,
+      ticks % pdva_config.downsample.control.M == 0) {
+    a = snprintf(&control_buffer[p*control_size + control_count],
+             control_size - control_count,
           "%f\t"
           "%u\t%u\t%u\t%u\n",
           time,
@@ -489,9 +643,58 @@ void datalog_alarm_handler(union sigval arg) {
           control_out.aileron, control_out.elevator,
           control_out.throttle, control_out.rudder);
 
+    if(a<0 || a>= control_size - control_count) {
+      syslog(LOG_ERR, "Error writing on control buffer: %m (%s)%d",
+	   __FILE__, __LINE__);
+      return;
+    }
+    control_count += a;
+  }
 
   //Increment the tick counter
   ticks++;
+  ticks_write++;
+
+  if(ticks_write >= write_interval){
+    sensor_file.buffer = &sensor_buffer[p*sensor_size];
+    sensor_file.count = sensor_count;
+    sensor_count = 0;
+
+    attitude_file.buffer = &attitude_buffer[p*attitude_size];
+    attitude_file.count = attitude_count;
+    attitude_count = 0;
+
+    gps_file.buffer = &gps_buffer[p*gps_size];
+    gps_file.count = gps_count;
+    gps_count = 0;
+
+    control_file.buffer = &control_buffer[p*control_size];
+    control_file.count = control_count;
+    control_count = 0;
+
+    if(sem_post(&sensor_file.sem))
+      syslog(LOG_ERR, "Error posting sensor semaphore: %m (%s)%d",
+	   __FILE__, __LINE__);
+    if(sem_post(&attitude_file.sem))
+      syslog(LOG_ERR, "Error posting attitude semaphore: %m (%s)%d",
+	   __FILE__, __LINE__);
+    if(sem_post(&gps_file.sem))
+      syslog(LOG_ERR, "Error posting gps semaphore: %m (%s)%d",
+	   __FILE__, __LINE__);
+    if(sem_post(&control_file.sem))
+      syslog(LOG_ERR, "Error posting control semaphore: %m (%s)%d",
+	   __FILE__, __LINE__);
+
+    p = (p+1) % 2;
+    ticks_write = 0;
+  }
+
+
+  //Unlock datalog mutex
+  if (pthread_mutex_unlock(&datalog_mutex)) {
+    syslog(LOG_ERR, "Error unlocking datalog mutex: %m (%s)%d",
+	   __FILE__, __LINE__);
+  }
 }
 
 void
@@ -522,6 +725,11 @@ datalog_destroy(datalog_t *log) {
   filter_destroy(&filter_attitude);
   filter_destroy(&filter_gps);
   filter_destroy(&filter_control);
+
+  if(pthread_mutex_destroy(&datalog_mutex)){
+    syslog(LOG_ERR, "Error destroying datalog mutex: %m (%s)%d",
+	   __FILE__, __LINE__);
+  }
 }
 
 

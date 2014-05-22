@@ -207,6 +207,8 @@ The available parameters are
 
         uint32_t spi_speed_hz;
 
+	int datalog_write_ms;
+
 	int downsample_%s;
 (where %s is the name of the datalog file)
 
