@@ -23,12 +23,22 @@
 #include "param.h"
 #include "pid.h"
 
+/* *** Types *** */
+
+typedef void (*control_func)();
+
 /* *** Prototypes *** */
 
 static void alarm_handler(int signum, siginfo_t *info, void *context);
-static inline void calculate_control();
+static inline void control_thums();
 
 /* *** Variables *** */
+
+/// All available controllers
+static control_func calculate_control[] =
+{
+  control_thums ///< Controller 0
+};
 
 /// Configuration structure.
 extern pdva_pilot_config_t pdva_config;
@@ -327,25 +337,19 @@ alarm_handler(int signum, siginfo_t *info, void *context) {
   if (sensor_head_read_write(&sensor_head_data, &msg_seq, &control_out)) {
     msg_ok = 0;
     //How to proceed when failed to obtain sensor head measurements?
-    //Unlock mutex
-    if (pthread_mutex_unlock(&mutex)) {
-      syslog(LOG_ERR, "Error unlocking mutex: %m (%s)%d",
-  	   __FILE__, __LINE__);
-    }
-    return;
 
+  }else{
+    msg_ok = 1;
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    time_msg_received = tv.tv_sec + 1e-6 * tv.tv_usec - time_startup;
+
+    // Convert sensor head data to double format in SI units
+    sensor_head_data_convert(&sensor_head_data, &sensor, &attitude, &gps);
   }
-  msg_ok = 1;
-  struct timeval tv;
-  gettimeofday(&tv, NULL);
-  time_msg_received = tv.tv_sec + 1e-6 * tv.tv_usec - time_startup;
-
-  // Convert sensor head data to double format in SI units
-  sensor_head_data_convert(&sensor_head_data, &sensor, &attitude, &gps);
-  
   
   //Calculate the control action
-  calculate_control();
+  calculate_control[pdva_config.control_id]();
 
   // Convert sensor head command from double format to PWM
   sensor_head_command_convert(&control_out, &control);
@@ -358,7 +362,7 @@ alarm_handler(int signum, siginfo_t *info, void *context) {
 }
 
 static inline void 
-calculate_control() {
+control_thums() {
   switch (control_configuration) {
   case ALTITUDE_FROM_POWER:
     control.throttle = pid_update(&throttle_pid,

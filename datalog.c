@@ -131,9 +131,9 @@ datalogging(void *arg) {
   //Set timer
   struct itimerspec timer_spec;
   timer_spec.it_interval.tv_sec = pdva_config.datalog_timer_period.tv_sec;
-  timer_spec.it_value.tv_sec = pdva_config.datalog_timer_period.tv_sec;
+  timer_spec.it_value.tv_sec = 0;
   timer_spec.it_interval.tv_nsec = pdva_config.datalog_timer_period.tv_nsec;
-  timer_spec.it_value.tv_nsec = pdva_config.datalog_timer_period.tv_nsec;
+  timer_spec.it_value.tv_nsec = pdva_config.control_timer_period.tv_nsec/2;
 
   if (timer_settime(datalog_timer, 0, &timer_spec, NULL)) {
     syslog(LOG_ERR, "Error setting datalog loop timer: %m (%s)%d.",

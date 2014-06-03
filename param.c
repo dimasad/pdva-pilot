@@ -276,6 +276,7 @@ pdva_config_init(pdva_pilot_config_t *pdva_config) {
   pdva_config->control_timer_period.tv_nsec = CONTROL_TIMER_PERIOD_NS;
   pdva_config->datalog_timer_period.tv_sec = 0;
   pdva_config->datalog_timer_period.tv_nsec = CONTROL_TIMER_PERIOD_NS;
+  pdva_config->control_id = 0;
   pdva_config->spi_speed_hz = SPI_MAX_SPEED_HZ;
   pdva_config->datalog_write_ms = DATALOG_WRITE_MS;
   pdva_config->downsample.sensor.M = 1;
@@ -374,6 +375,9 @@ pdva_config_load(pdva_pilot_config_t *pdva_config, const char *file) {
     pdva_config->datalog_timer_period.tv_sec = llvalue;
   if (config_lookup_int64(&config, "datalog_timer_period_ns", &llvalue))
     pdva_config->datalog_timer_period.tv_nsec = llvalue;
+
+  if (config_lookup_int64(&config, "control_id", &llvalue))
+    pdva_config->control_id = llvalue;
 
   if (config_lookup_int64(&config, "spi_speed_hz", &llvalue))
     pdva_config->spi_speed_hz = llvalue;

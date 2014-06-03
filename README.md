@@ -205,6 +205,8 @@ The available parameters are
 	time_t datalog_timer_period_s;
 	long datalog_timer_period_ns;
 
+	int control_id;
+
         uint32_t spi_speed_hz;
 
 	int datalog_write_ms;
