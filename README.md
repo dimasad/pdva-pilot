@@ -109,7 +109,8 @@ To install the MAVLink library
 	git clone https://github.com/mavlink/mavlink.git
 	mkdir generated
 	wget https://raw.github.com/dimasad/pdva-pilot/master/pdvapilot.xml -O mavlink/message_definitions/v1.0/pdvapilot.xml
-	mavlink/pymavlink/generator/mavgen.py --output=generated --lang=C mavlink/message_definitions/v1.0/pdvapilot.xml
+	export PYTHONPATH=$PYTHONPATH:/tmp/mavlink
+	python -m pymavlink.tools.mavgen --output=generated --lang=C mavlink/message_definitions/v1.0/pdvapilot.xml
 	sudo rm -r /usr/local/include/mavlink
 	sudo mkdir /usr/local/include/mavlink
 	sudo mv generated /usr/local/include/mavlink/v1.0
